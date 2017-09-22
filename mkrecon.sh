@@ -1,18 +1,9 @@
 #!/bin/bash
-# 20170919 Kirby
-
-
-# TODO: detect database and recommend running hexorbase
-# TODO: if FUZZ file, recommend jsql
-# TODO: if oracle, recommend sidguess and tnscmd10g
-# TODO: uniscan
-# TODO: if web, recommend vega, w3af
-# TODO: w3af_console script https://www.owasp.org/index.php/Automated_Audit_using_W3AF
-# TODO: if cisco snmp, recommend copy-router-config.pl
-
+# 20170921 Kirby
 
 
 # POST EXPLOIT NON-ADMIN
+# JUST SOME NOTES TO REMIND ME WHAT TO DO AS A NON-ROOT USER
 # for i in $(find /bin /sbin /usr /etc /opt /home -type f -perm /u=s,g=s -print 2>/dev/null);do ls -lh $i;done
 # for i in $(find /bin /sbin /usr /etc /opt 2>/dev/null); do if [[ -w "$i" ]]; then ls -ld $i;fi;done
 # ypwhich

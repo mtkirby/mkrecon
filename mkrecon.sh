@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20170921 Kirby
+# 20170922 Kirby
 
 
 # POST EXPLOIT NON-ADMIN
@@ -33,8 +33,13 @@ function MAIN()
     
     export TARGET=$1 
     export RECONDIR="${HOME}/mkrecon/${TARGET}"
+    mkdir -p ${HOME}/mkrecon >/dev/null 2>&1
     cd ${HOME}/mkrecon || exit 1
-    rm -rf "$TARGET" >/dev/null 2>&1
+    if [[ -d "$TARGET" ]]
+    then
+        # remove old files
+        rm -rf "$TARGET" >/dev/null 2>&1
+    fi
     
     buildEnv || exit 1
     cd "$RECONDIR" || exit 1

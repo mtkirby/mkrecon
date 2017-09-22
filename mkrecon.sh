@@ -374,6 +374,8 @@ function openvasScan()
     if ! omp -u admin -w $password -g >/dev/null 2>&1
     then
         echo "FAILED: UNABLE TO CONNECT TO OPENVAS"
+        echo "If you want to use OpenVas, change the password in the openvasScan function"
+        return 1
     fi  
 
     if ! grep -q max_checks /etc/openvas/openvassd.conf

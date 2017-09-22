@@ -1025,7 +1025,7 @@ function scanURLs()
     done
 
     # run fimap on anything with php
-    for url in $(egrep -i '\.php$' "$RECONDIR"/${TARGET}.urls |head -1 |awk '{print $1}')
+    for url in $(egrep -i '\.php$' "$RECONDIR"/${TARGET}.urls |awk '{print $1}')
     do
         $TIMEOUT 300 fimap --force-run -4 -u "$url" 2>&1 |egrep -v '^fimap |^Another fimap|^:: |^Starting harvester|^No links found|^AutoAwesome is done' >> "$RECONDIR"/${TARGET}.fimap
     done

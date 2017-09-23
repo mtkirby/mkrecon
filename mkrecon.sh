@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20170922 Kirby
+# 20170923 Kirby
 
 
 # POST EXPLOIT NON-ADMIN
@@ -669,6 +669,7 @@ function webDiscover()
     local sslflag
     local url
     local wordlist
+    local urlfile
 
 
     # Build dirb dictionary array
@@ -692,10 +693,12 @@ function webDiscover()
         fi
     done
 
+    # first run through baseurls
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
         # Run nikto in the background
-        screen -dmS ${TARGET}.nikto.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.nikto $TIMEOUT 900 nikto -no404 -host "$url"
+        urlfile=${url//\//,}
+        screen -dmS ${TARGET}.nikto.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.${urlfile}.nikto $TIMEOUT 900 nikto -no404 -host "$url"
 
         echo "##################################################" >>"$RECONDIR"/${TARGET}.robots.txt
         echo "${url}/robots.txt" >>"$RECONDIR"/${TARGET}.robots.txt
@@ -717,7 +720,11 @@ function webDiscover()
         wget --no-check-certificate -r -l3 --spider --force-html -D $TARGET "$url" 2>&1 | grep '^--' |grep -v '(try:' | awk '{ print $3 }' |grep $TARGET  >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
 
         cat "$RECONDIR"/tmp/${TARGET}.spider.raw "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |sort |uniq > "$RECONDIR"/${TARGET}.spider
+    done
 
+    # second run through baseurls.  dirb may take hours
+    for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
+    do
         # do not put all txt files on dirb cmdline cuz it truncates it's args
         # instead iterate over an array
         mkdir -p "$RECONDIR"/tmp/${TARGET}.dirb >/dev/null 2>&1
@@ -728,6 +735,7 @@ function webDiscover()
         done
     done
 
+    # run dirb on everything robots.txt tells us to ignore
     for url in ${a_robots[@]}
     do
         for dirbfile in ${a_dirbfiles[@]}
@@ -750,6 +758,7 @@ function webDiscover()
     do
         echo "${url%\?*}" >> "$RECONDIR"/tmp/${TARGET}.dirburls.raw
     done
+
     for url in $(grep '==> DIRECTORY: ' "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb |awk '{print $3}' |sort |uniq)
     do
         echo "${url%\?*}" >> "$RECONDIR"/tmp/${TARGET}.dirburls.raw
@@ -826,6 +835,9 @@ function hydraScanURLs()
 {
     local path
     local hydrafile
+    local sslflag
+    local url
+    local port
 
     for url in $(grep CODE:401 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb |awk '{print $2}'|sed -e 's/\/*$/\//g'|sort|uniq)
     do
@@ -889,7 +901,7 @@ function fuzzURLs()
         wfuzzfile=${url//\//,}
         $TIMEOUT 60 wfuzz --hc 404 -w /usr/share/wfuzz/wordlist/vulns/sql_inj.txt "$url" >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.sql.wfuzz.raw 2>&1
         $TIMEOUT 60 wfuzz --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt "$url" >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtnix.wfuzz.raw 2>&1
-        #wfuzz --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt "$url" >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.raw 2>&1
+        $TIMEOUT 60 wfuzz --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt "$url" >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.raw 2>&1
         # sometimes timeout command forks badly on exit
         pkill -t $TTY -f wfuzz
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20170923 Kirby
+# 20170925 Kirby
 
 
 # POST EXPLOIT NON-ADMIN
@@ -714,10 +714,10 @@ function webDiscover()
             then
                 a_robots[${#a_robots[@]}]="${url}${robotdir}"
             fi
-            wget --no-check-certificate -r -l3 --spider ${url}${robotdir} 2>&1 | grep '^--' |grep -v '(try:' | awk '{ print $3 }' >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
+            $TIMEOUT 60 wget --no-check-certificate -r -l3 --spider ${url}${robotdir} 2>&1 | grep '^--' |grep -v '(try:' | awk '{ print $3 }' >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
         done
 
-        wget --no-check-certificate -r -l3 --spider --force-html -D $TARGET "$url" 2>&1 | grep '^--' |grep -v '(try:' | awk '{ print $3 }' |grep $TARGET  >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
+        $TIMEOUT 60 wget --no-check-certificate -r -l3 --spider --force-html -D $TARGET "$url" 2>&1 | grep '^--' |grep -v '(try:' | awk '{ print $3 }' |grep $TARGET  >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
 
         cat "$RECONDIR"/tmp/${TARGET}.spider.raw "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |sort |uniq > "$RECONDIR"/${TARGET}.spider
     done
@@ -768,7 +768,7 @@ function webDiscover()
 
     for url in $(cat "$RECONDIR"/${TARGET}.dirburls)
     do
-        $TIMEOUT 300 wget --no-check-certificate -r -l2 --spider --force-html -D $TARGET "$url" 2>&1 | grep '^--' |grep -v '(try:' |egrep "$IP|$TARGET" | awk '{ print $3 }' >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
+        $TIMEOUT 120 wget --no-check-certificate -r -l2 --spider --force-html -D $TARGET "$url" 2>&1 | grep '^--' |grep -v '(try:' |egrep "$IP|$TARGET" | awk '{ print $3 }' >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
         # sometimes timeout command forks badly on exit
         pkill -t $TTY -f wget
     done
@@ -808,7 +808,7 @@ function webDiscover()
     do 
         echo "##################################################" >> "$RECONDIR"/${TARGET}.headers 2>&1
         echo "$url" >> "$RECONDIR"/${TARGET}.headers
-        wget -O /dev/null --no-check-certificate -S --method=OPTIONS "$url" >> "$RECONDIR"/${TARGET}.headers 2>&1
+        $TIMEOUT 20 wget -O /dev/null --no-check-certificate -S --method=OPTIONS "$url" >> "$RECONDIR"/${TARGET}.headers 2>&1
     done
 
 
@@ -1015,8 +1015,6 @@ function getPortFromUrl()
 function scanURLs()
 {
     local url
-    local port
-    local output
 
     screen -dmS ${TARGET}.urlsew.$RANDOM $TIMEOUT 7200 eyewitness -d "$RECONDIR"/${TARGET}.urlsEyeWitness --no-dns --no-prompt --all-protocols -f "$RECONDIR"/${TARGET}.urls
 

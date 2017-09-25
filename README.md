@@ -7,4 +7,5 @@ Packages you will need to install (in Kali): openvas-cli xmlstarlet ncrack explo
 
 If you want to use openvas, change the password variable in the openvasScan function.
 
-
+Usage: ~/mkrecon.sh <IP or host>
+Output files are placed in /root/mkrecon/<IP or host>

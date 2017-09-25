@@ -955,7 +955,7 @@ function davScanURLs()
         # try multiple DAV scans.  None of these are 100% reliable, so try several.
         $TIMEOUT 90 davtest -cleanup -url "$url" 2>&1|grep SUCCEED >> "$RECONDIR"/${TARGET}.davtest
 
-        $TIMEOUT 90 echo ls |cadaver "$url" 2>&1 |egrep -v 'command can only be used when connected to the server.|^Try running|^Could not access|^405 Method|^Connection to' >> "$RECONDIR"/${TARGET}.cadaver
+        echo ls | $TIMEOUT 10 cadaver "$url" 2>&1 |egrep -v 'command can only be used when connected to the server.|^Try running|^Could not access|^405 Method|^Connection to' >> "$RECONDIR"/${TARGET}.cadaver
 
         port=$(getPortFromUrl "$url")
         output=$($TIMEOUT 90 nmap -p $port -Pn --script http-webdav-scan --script-args "http-webdav-scan.path=/${url#*/*/*/}" ${TARGET} 2>&1 )

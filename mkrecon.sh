@@ -1,27 +1,29 @@
 #!/bin/bash
-# 20170925 Kirby
+# 20170927 Kirby
 
 
 # POST EXPLOIT NON-ADMIN
 # JUST SOME NOTES TO REMIND ME WHAT TO DO AS A NON-ROOT USER
-# for i in $(find /bin /sbin /usr /etc /opt /home -type f -perm /u=s,g=s -print 2>/dev/null);do ls -lh $i;done
-# for i in $(find /bin /sbin /usr /etc /opt 2>/dev/null); do if [[ -w "$i" ]]; then ls -ld $i;fi;done
+# find / -xdev -type f -perm /u=s,g=s -exec ls -ld {} \; 2>/dev/null
+# find / -xdev \( -type f -o -type d \) -perm -0002 -exec ls -ld {} \; 2>/dev/null
 # ypwhich
 # sudo -l
 # for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq);do if [[ -d $i ]]; then ls -ld $i;fi;done
 # for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq);do if [[ -d $i/.ssh ]]; then ls -la $i/.ssh;fi;done
-# for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq);do if [[ -f $i/.rhosts ]]; then ls -ld $i/.rhosts;fi;done
-# for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq);do if [[ -f $i/.cvspass ]]; then ls -ld $i/.cvspass;fi;done
-# for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq);do if [[ -f $i/.bash_history ]]; then ls -ld $i/.bash_history;fi;done
+# for a in .rhosts .shosts .cvspass .bash_history .mysql_history .psql_history .psqlrc .bashrc .bash_profile .profile .viminfo .nano_history; do for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq);do if [[ -f $i/$a ]]; then ls -ld $i/$a;fi;done;done
 # netstat -peanut|grep LISTEN
 # df -a   # look for nfs/smb
 # docker ps
 # for i in /proc/*/cmdline;do exe=$(cat $i|tr '\0' ' '|cut -d':' -f1|awk '{print $1}'); if [[ -f $exe ]]; then ls -ld $exe|sort|uniq;fi;done
 # find /etc /usr /opt -name .htpasswd 2>/dev/null
 # find /var /opt /usr 2>/dev/null |egrep -v '/usr/share/|/usr/include|/usr/sbin|/usr/bin'|grep -i passw
+# find /etc -type f -exec grep -i AuthUserFile {} \; 2>/dev/null
 # find /etc -type f -exec grep -i passw {} \; 2>/dev/null
-# look at snmp.conf /etc/cron* 
+# find /etc -type f -iname '*passw*'
+# look at snmp.conf /etc/cron*  /etc/anacron*
 # iptables vs ip6tables - check if ports are closed in one, but open in the other
+# find /var/lib/mysql -type f -iname '*user*' # run strings on files
+
 
 
 umask 077
@@ -139,6 +141,13 @@ function MAIN()
             echo "starting ldapScan"
             ldapScan $port
     	fi
+
+        # elasticsearch
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//http//Elasticsearch'
+        then
+            echo "starting elasticsearchScan"
+            elasticsearchScan $port
+        fi
     
     done
     
@@ -630,6 +639,18 @@ function smbScan()
 ################################################################################
 
 ################################################################################
+function elasticsearchScan()
+{
+    local port=$1
+
+    $TIMEOUT 90 curl -s "http://${TARGET}:${port}/_cat/indices?v" >> "$RECONDIR"/${TARGET}.elasticsearch 2>&1
+
+    return 0
+}
+################################################################################
+
+
+################################################################################
 function redisScan()
 {
     local port=$1
@@ -702,11 +723,11 @@ function webDiscover()
 
         echo "##################################################" >>"$RECONDIR"/${TARGET}.robots.txt
         echo "${url}/robots.txt" >>"$RECONDIR"/${TARGET}.robots.txt
-        curl ${url}/robots.txt 2>/dev/null >>"$RECONDIR"/${TARGET}.robots.txt
+        curl -s ${url}/robots.txt >>"$RECONDIR"/${TARGET}.robots.txt 2>&1
         echo "" >>"$RECONDIR"/${TARGET}.robots.txt
         echo "##################################################" >>"$RECONDIR"/${TARGET}.robots.txt
 
-        for robotdir in $(curl ${url}/robots.txt 2>/dev/null |egrep '^Disallow: ' |awk '{print $2}' |sed -e 's/\*//g' |tr -d '\r')
+        for robotdir in $(curl -s ${url}/robots.txt 2>&1 |egrep '^Disallow: ' |awk '{print $2}' |sed -e 's/\*//g' |tr -d '\r')
         do
             if [[ ! $robotdir =~ ^/$ ]] \
             && [[ ! $robotdir =~ \? ]] \

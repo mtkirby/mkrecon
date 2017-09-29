@@ -1,0 +1,162 @@
+set -o vi
+HOST=`/bin/uname -n`
+if [ "$TERM" == "xterm" ];then
+        PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOST}:${PWD}\007"'
+fi
+export HISTSIZE=100000
+alias psa="ps axwwwo user,pid,ppid,pgid,state,tt,nice,%cpu,%mem,start,stat,command"
+alias mv="mv -v"
+alias rm="rm -v"
+alias cp="cp -v"
+alias ls='ls -FAb'
+alias ll='ls -Fl'
+alias l='ls -1'
+alias lsl='ls -1'
+alias myps="ps Haxwww -o uid,user,tt,pid,ppid,pgid,pcpu,pmem,nice,rss,start,stat,xstat,command"
+alias s='sudo'
+
+shopt -s dotglob
+
+umask 022
+if [ $USER == "root" ]; then
+    export PS1='\n    ###  \u@\h  ?$?  &\j  \t  ###\n\w # '
+    ulimit -u unlimited
+    ulimit -l unlimited
+    ulimit -i unlimited
+    ulimit -s unlimited
+    ulimit -q unlimited
+else
+    export PS1='\n    ###  \u@\h  ?$?  &\j  \t  ###\n\w # '
+fi
+
+export VISUAL=vi
+export EDITOR=vi
+alias lynxie='lynx --useragent="Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/6.0)" '
+alias sc=systemctl
+alias myltrace='ltrace -Sif '
+alias mystrace='strace -fvTy '
+alias dusk='du -sk * |sort -k1 -n'
+which vim >/dev/null 2>&1 && alias vi=vim
+
+
+function mkprobe()
+{
+    echo "##################################################" 
+    echo "# FINDING SETUID/SETGID"
+    find / -xdev -type f -perm /u=s,g=s -exec ls -ld {} \; 2>/dev/null
+
+    echo "##################################################" 
+    echo "# FINDING WORLD WRITABLE"
+    find / -xdev \( -type f -o -type d \) -perm -0002 -exec ls -ld {} \; 2>/dev/null
+
+    echo "##################################################" 
+    echo "# YPWHICH"
+    if ypwhich
+    then
+        echo "##################################################" 
+        echo "# YPCAT PASSWD"
+        ypcat -k passwd
+        echo "##################################################" 
+        echo "# YPCAT SHADOW.BYNAME"
+        ypcat -k shadow.byname
+    fi
+
+    echo "##################################################" 
+    echo "# SUDO -L"
+    sudo -l
+
+    echo "##################################################" 
+    echo "# LOCAL USER HOMES/FILES"
+    for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq)
+    do 
+        if [ -d $i ]
+        then 
+            ls -ld $i
+        fi
+    done
+    for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq)
+    do 
+        if [ -d $i/.ssh ]
+        then
+            ls -la $i/.ssh
+        fi
+    done
+    for a in .rhosts .shosts .cvspass .bash_history .mysql_history .psql_history .psqlrc .bashrc .bash_profile .profile .viminfo .nano_history
+    do 
+        for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq)
+        do 
+            if [ -f $i/$a ]
+            then
+                ls -ld $i/$a
+            fi
+        done
+    done
+
+    echo "##################################################" 
+    echo "# NETSTAT -PEANUT LISTENERS"
+    netstat -peanut|grep LISTEN
+
+    echo "##################################################" 
+    echo "# DF -A"
+    # look for nfs/smb
+    df -a
+
+    echo "##################################################" 
+    echo "# DOCKER PS"
+    if docker ps
+    then
+        echo "##################################################" 
+        echo "# GETENT GROUP DOCKER"
+        getent group docker
+    fi
+
+    echo "##################################################" 
+    echo "# FILES OF RUNNING PROCESSES"
+    for i in /proc/*/cmdline
+    do 
+        local exe=$(cat $i|tr '\0' ' '|cut -d':' -f1|awk '{print $1}')
+        if [ -e $exe ]
+            then ls -ld $exe 2>/dev/null
+        fi
+    done |sort|uniq
+
+    echo "##################################################" 
+    echo "# FIND HTPASSWD FILES"
+    find / -xdev -name .htpasswd 2>/dev/null
+
+    echo "##################################################" 
+    echo "# APACHE AUTHUSERFILE LOCATIONS"
+    find /etc -type f -exec grep -i AuthUserFile {} \; 2>/dev/null
+
+    echo "##################################################" 
+    echo "# COMMUNITY IN SNMP.CONF"
+    find /etc -type f -iname '*snmp*' -exec grep -i community {} \; 2>/dev/null
+    
+    echo "##################################################" 
+    echo "# CRON IN /ETC"
+    find /etc/*cron* -type f -exec ls -ld {} \; 2>/dev/null
+
+    echo "##################################################" 
+    echo "# MYSQL USER DB FILES"
+    find /var/lib/mysql -type f -iname '*user*' -exec ls -ld {} \; 2>/dev/null
+
+    echo "##################################################" 
+    echo "# IPTABLES-SAVE"
+    iptables-save
+
+    echo "##################################################" 
+    echo "# IP6TABLES-SAVE"
+    ip6tables-save
+
+    echo "##################################################" 
+    echo "# FIND PASSW FILES"
+    echo "# OUTPUT TO /tmp/passwfiles.$$"
+    find /var /opt /usr -type f -iname '*passw*' 2>/dev/null |egrep -v '/usr/share/|/usr/include|/usr/sbin|/usr/bin' >>/tmp/passwfiles.$$ 2>&1
+    find /etc -type f -iname '*passw*' >>/tmp/passwfiles.$$ 2>/dev/null
+
+    echo "##################################################" 
+    echo "# PASSW IN /ETC FILES"
+    echo "# OUTPUT TO /tmp/etcpassw.$$"
+    find /etc -type f -exec grep -i passw {} \; >>/tmp/etcpassw.$$ 2>/dev/null 
+
+}

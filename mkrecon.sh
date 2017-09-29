@@ -1,29 +1,5 @@
 #!/bin/bash
-# 20170927 Kirby
-
-
-# POST EXPLOIT NON-ADMIN
-# JUST SOME NOTES TO REMIND ME WHAT TO DO AS A NON-ROOT USER
-# find / -xdev -type f -perm /u=s,g=s -exec ls -ld {} \; 2>/dev/null
-# find / -xdev \( -type f -o -type d \) -perm -0002 -exec ls -ld {} \; 2>/dev/null
-# ypwhich
-# sudo -l
-# for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq);do if [[ -d $i ]]; then ls -ld $i;fi;done
-# for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq);do if [[ -d $i/.ssh ]]; then ls -la $i/.ssh;fi;done
-# for a in .rhosts .shosts .cvspass .bash_history .mysql_history .psql_history .psqlrc .bashrc .bash_profile .profile .viminfo .nano_history; do for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq);do if [[ -f $i/$a ]]; then ls -ld $i/$a;fi;done;done
-# netstat -peanut|grep LISTEN
-# df -a   # look for nfs/smb
-# docker ps
-# for i in /proc/*/cmdline;do exe=$(cat $i|tr '\0' ' '|cut -d':' -f1|awk '{print $1}'); if [[ -f $exe ]]; then ls -ld $exe|sort|uniq;fi;done
-# find /etc /usr /opt -name .htpasswd 2>/dev/null
-# find /var /opt /usr 2>/dev/null |egrep -v '/usr/share/|/usr/include|/usr/sbin|/usr/bin'|grep -i passw
-# find /etc -type f -exec grep -i AuthUserFile {} \; 2>/dev/null
-# find /etc -type f -exec grep -i passw {} \; 2>/dev/null
-# find /etc -type f -iname '*passw*'
-# look at snmp.conf /etc/cron*  /etc/anacron*
-# iptables vs ip6tables - check if ports are closed in one, but open in the other
-# find /var/lib/mysql -type f -iname '*user*' # run strings on files
-
+# 20170928 Kirby
 
 
 umask 077
@@ -149,6 +125,13 @@ function MAIN()
             elasticsearchScan $port
         fi
     
+        # iscsi
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//iscsi'
+        then
+            echo "starting iscsiScan"
+            iscsiScan $port
+        fi
+    
     done
     
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
@@ -242,7 +225,7 @@ function killHangs()
 function buildEnv()
 {
     local file
-    local pkgs="openvas-cli xmlstarlet ncrack exploitdb wfuzz curl ike-scan wget snmpcheck rsh-client bind9-host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldap-utils skipfish blindelephant joomscan seclists libwww-mechanize-perl nikto"
+    local pkgs="openvas-cli xmlstarlet ncrack exploitdb wfuzz curl ike-scan wget snmpcheck rsh-client bind9-host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldap-utils skipfish blindelephant joomscan seclists libwww-mechanize-perl nikto open-iscsi"
 
     TIMEOUT='timeout --kill-after=10 --foreground'
     local rawtty=$(tty)
@@ -277,7 +260,7 @@ function buildEnv()
         fi
     fi
 
-    if ! which omp xmlstarlet ncrack searchsploit mech-dump wfuzz curl ike-scan wget timeout snmp-check netkit-rsh host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldapsearch skipfish joomscan >/dev/null 2>&1
+    if ! which omp xmlstarlet ncrack searchsploit mech-dump wfuzz curl ike-scan wget timeout snmp-check netkit-rsh host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldapsearch skipfish joomscan iscsiadm >/dev/null 2>&1
     then
         echo "FAILED: missing apps.  Read the script."
         echo "run: apt-get install -y $pkgs"
@@ -633,6 +616,17 @@ function smbScan()
         echo "" >>"$RECONDIR"/${TARGET}.rpcclient
         echo "" >>"$RECONDIR"/${TARGET}.rpcclient
     done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function iscsiScan()
+{
+    local port=$1
+
+    $TIMEOUT 90 iscsiadm -m discovery -t st -p ${TARGET}:${port} >> "$RECONDIR"/${TARGET}.iscsiadm 2>&1
 
     return 0
 }

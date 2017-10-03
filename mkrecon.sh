@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171002 Kirby
+# 20171003 Kirby
 
 
 umask 077
@@ -233,6 +233,12 @@ function buildEnv()
 
     DATE=$(date +"%Y%m%d%H%M")
 
+    if ps -t $(tty|cut -d'/' -f3-) 2>/dev/null |grep -q mkrecon.sh
+    then
+        echo "mkrecon is already running in your tty"
+        return 1
+    fi
+
     if [[ "$LOGNAME" != "root" ]]
     then
         echo "FAILED: you must run as root"
@@ -367,6 +373,7 @@ function openvasScan()
     local reportCSV
     local reportTXT
     local reportHTML
+    local pkg
 
     if ! omp -u admin -w $password -g >/dev/null 2>&1
     then
@@ -374,6 +381,16 @@ function openvasScan()
         echo "If you want to use OpenVas, change the password in the openvasScan function"
         return 1
     fi  
+
+    for pkg in nsis rpm alien
+    do
+        if ! dpkg -s $pkg >/dev/null 2>&1
+        then
+            echo "installing $pkg for openvas"
+            apt-get install -y $pkg >/dev/null 2>&1
+        fi
+    done
+
 
     if ! grep -q max_checks /etc/openvas/openvassd.conf
     then
@@ -551,13 +568,18 @@ function dnsScan()
         domain=$(host $IP $IP |grep 'domain name pointer' |tail -1 |sed -e 's/.*domain name pointer \(.*\)./\1/'  |sed -e 's/\.$//' |cut -d'.' -f2-)
     fi
     $TIMEOUT 900 dnsrecon -n $TARGET -r ${IP%.*}.0-${IP%.*}.255  >>"$RECONDIR"/${TARGET}.dnsreconptr 2>&1 &
-    $TIMEOUT 900 dnsrecon -n $TARGET -r 192.168.0.0-192.168.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.192 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 192.168.0.0-192.168.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.192.168 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 172.16.0.0-172.31.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.172.16 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.0.0.0-10.63.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.10.0 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.64.0.0-10.127.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.10.64 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.128.0.0-10.191.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.10.128 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.192.0.0-10.255.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.10.192 2>&1 &
     if [[ $domain =~ ^..* ]]
     then
         $TIMEOUT 90 dnsenum --dnsserver $TARGET -f "$RECONDIR"/tmp/dns.lst --nocolor --enum -p0 $domain >>"$RECONDIR"/${TARGET}.dnsenum 2>&1 &
         $TIMEOUT 90 dnsrecon -d $domain -n $TARGET >>"$RECONDIR"/${TARGET}.dnsrecon 2>&1 &
-        $TIMEOUT 90 host -a $domain $TARGET >>"$RECONDIR"/${TARGET}.host-a 2>&1 &
-        $TIMEOUT 90 host -l $domain $TARGET >>"$RECONDIR"/${TARGET}.host-l 2>&1 &
+        $TIMEOUT 90 host -a $domain. $TARGET >>"$RECONDIR"/${TARGET}.host-a 2>&1 &
+        $TIMEOUT 90 host -l $domain. $TARGET >>"$RECONDIR"/${TARGET}.host-l 2>&1 &
     fi
 
     return 0

@@ -9,3 +9,9 @@ If you want to use openvas, change the password variable in the openvasScan func
 
 Usage: ~/mkrecon.sh <IP or host>
 Output files are placed in /root/mkrecon/<IP or host>
+
+
+The mkbash file contains my customized bash environment plus a couple functions:
+mkprobe() - Probe the local system for weak configs, passwords, etc.
+dumpPackages() - Dump a package list from rpm/dpkg.  Copy back to attack host and run localsearchsploit, which uses searchsploit to find possible vulnerabilities
+

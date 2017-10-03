@@ -160,3 +160,31 @@ function mkprobe()
     find /etc -type f -exec grep -i passw {} \; >>/tmp/etcpassw.$$ 2>/dev/null 
 
 }
+
+
+function dumpPackages()
+{
+    local pkg
+    local name
+    local version
+    local IFS=$'\n'
+    rm -f /tmp/searchsploit >/dev/null 2>&1
+    if which rpm >/dev/null 2>&1
+    then
+        for pkg in $(rpm -qa|sort)
+        do 
+            name=$(rpm -qi $pkg |awk '/^Name / {print $3}'|head -1 )
+            version=$(rpm -qi $pkg |awk '/^Version / {print $3}'|head -1)
+            echo "$name $version" >> /tmp/searchsploit
+        done
+    fi
+    if which dpkg >/dev/null 2>&1
+    then
+        dpkg -l |awk '/^ii/ {print $2" " $3}' |sed -e 's/ [[:digit:]]:/ /g' |sed -e 's/\+.*//g' |sed -e 's/-[[:digit:]].*//g' |sort|uniq >> /tmp/searchsploit
+    fi
+
+    if [[ -f /tmp/searchsploit ]]
+    then
+        echo "Found packages.  Now copy /tmp/searchsploit to attack host and run localsearchsploit"
+    fi
+}

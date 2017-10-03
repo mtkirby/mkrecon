@@ -1,0 +1,24 @@
+#!/bin/bash
+
+IFS=$'\n'
+aout=()
+if [[ ! -f $1 ]]
+then
+    echo "must supply file"
+    exit 1
+fi
+for pkg in $(cat $1)
+do
+    for line in $(searchsploit $pkg)
+    do 
+        aout[${#aout[@]}]=$line
+    done
+    if [[ ${#aout[@]} != 5 ]]
+    then 
+        echo "##################################################" 
+        echo "FOUND FOR $pkg"
+        echo "${aout[*]}"
+        echo "##################################################" 
+    fi
+    aout=()
+done

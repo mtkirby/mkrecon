@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171001 Kirby
+# 20171002 Kirby
 
 
 umask 077
@@ -225,7 +225,7 @@ function killHangs()
 function buildEnv()
 {
     local file
-    local pkgs="openvas-cli xmlstarlet ncrack exploitdb wfuzz curl ike-scan wget snmpcheck rsh-client bind9-host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldap-utils skipfish blindelephant joomscan seclists libwww-mechanize-perl nikto open-iscsi"
+    local pkgs="openvas-cli xmlstarlet ncrack exploitdb wfuzz curl ike-scan wget snmpcheck rsh-client bind9-host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldap-utils skipfish blindelephant joomscan seclists libwww-mechanize-perl nikto open-iscsi cewl"
 
     TIMEOUT='timeout --kill-after=10 --foreground'
     local rawtty=$(tty)
@@ -260,7 +260,7 @@ function buildEnv()
         fi
     fi
 
-    if ! which omp xmlstarlet ncrack searchsploit mech-dump wfuzz curl ike-scan wget timeout snmp-check netkit-rsh host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldapsearch skipfish joomscan iscsiadm >/dev/null 2>&1
+    if ! which omp xmlstarlet ncrack searchsploit mech-dump wfuzz curl ike-scan wget timeout snmp-check netkit-rsh host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldapsearch skipfish joomscan iscsiadm cewl >/dev/null 2>&1
     then
         echo "FAILED: missing apps.  Read the script."
         echo "run: apt-get install -y $pkgs"

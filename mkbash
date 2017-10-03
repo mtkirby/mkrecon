@@ -4,6 +4,7 @@ if [ "$TERM" == "xterm" ];then
         PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOST}:${PWD}\007"'
 fi
 export HISTSIZE=100000
+export HISTFILE=/dev/null
 alias psa="ps axwwwo user,pid,ppid,pgid,state,tt,nice,%cpu,%mem,start,stat,command"
 alias mv="mv -v"
 alias rm="rm -v"

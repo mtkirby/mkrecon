@@ -1,5 +1,15 @@
 #!/bin/bash
 
+
+
+if [[ "(( $(date +'%s') - $(stat -c "%Y" /usr/share/exploitdb/files.csv) ))" -gt 604800 ]] \
+|| [[ ! -f /usr/share/exploitdb/files.csv ]]
+then
+    echo "exploitdb is old.  updating"
+    searchsploit -u
+fi
+
+
 IFS=$'\n'
 aout=()
 if [[ ! -f $1 ]]

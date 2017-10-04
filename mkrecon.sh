@@ -138,6 +138,8 @@ function MAIN()
     then
         echo "starting skipfishScan"
     	skipfishScan
+        echo "starting webWords"
+        webWords &
         echo "starting webDiscover"
     	webDiscover
     fi
@@ -148,9 +150,11 @@ function MAIN()
     	fuzzURLs &
         echo "starting sqlmapScan"
         sqlmapScan &
+        echo "starting cewlCrawl"
+    	cewlCrawl &
     fi
     
-    if [[ -d "$RECONDIR"/tmp/${TARGET}.dirb ]]
+    if [[ -f "$RECONDIR"/${TARGET}.dirburls.401 ]]
     then
         echo "starting hydraScanURLs"
         hydraScanURLs &
@@ -158,6 +162,8 @@ function MAIN()
     
     if [[ -f "$RECONDIR"/${TARGET}.urls ]]
     then
+        echo "starting getHeaders"
+        getHeaders &
         echo "starting mechDumpURLs"
         mechDumpURLs &
         echo "starting scanURLs"
@@ -451,7 +457,7 @@ function snmpScan()
 function nmapScan()
 {
     # other udp ports: U:111,123,12444,1258,13,13200,1604,161,17185,17555,177,1900,20110,20510,2126,2302,23196,26000,27138,27244,27777,27950,28138,30710,3123,31337,3478,3671,37,3702,3784,389,44818,4569,47808,49160,49161,49162,500,5060,53,5351,5353,5683,623,636,64738,6481,67,69,8611,8612,8767,88,9100,9600 
-    nmap --open -T4 -sT -sU -p T:1-65535,U:111,123,161,500,53,67 --script=version -sV --version-all -O -oN "$RECONDIR"/${TARGET}.nmap -oG "$RECONDIR"/${TARGET}.ngrep -oX "$RECONDIR"/${TARGET}.xml $TARGET >/dev/null 2>&1
+    nmap --open -T3 -sT -sU -p T:1-65535,U:111,123,161,500,53,67 --script=version -sV --version-all -O -oN "$RECONDIR"/${TARGET}.nmap -oG "$RECONDIR"/${TARGET}.ngrep -oX "$RECONDIR"/${TARGET}.xml $TARGET >/dev/null 2>&1
 
     return 0
 }
@@ -503,10 +509,10 @@ function otherNmaps()
     done
 
     # run nmap scripts in pairs that have category overlaps
-    #screen -dmS ${TARGET}.nmap-authbrute.$RANDOM $TIMEOUT 14400 nmap -T4 -p $scanports --script=auth,brute -oN "$RECONDIR"/${TARGET}.nmap-authbrute $TARGET
-    screen -dmS ${TARGET}.nmap-auth.$RANDOM $TIMEOUT 14400 nmap -T4 -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
-    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM $TIMEOUT 14400 nmap -T4 -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
-    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM $TIMEOUT 14400 nmap -T4 -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
+    #screen -dmS ${TARGET}.nmap-authbrute.$RANDOM $TIMEOUT 14400 nmap -T3 -p $scanports --script=auth,brute -oN "$RECONDIR"/${TARGET}.nmap-authbrute $TARGET
+    screen -dmS ${TARGET}.nmap-auth.$RANDOM $TIMEOUT 14400 nmap -T3 -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
+    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM $TIMEOUT 14400 nmap -T3 -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
+    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM $TIMEOUT 14400 nmap -T3 -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
 
     return 0
 }    
@@ -731,14 +737,6 @@ function webDiscover()
         urlfile=${url//\//,}
         screen -dmS ${TARGET}.nikto.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.${urlfile}.nikto $TIMEOUT 900 nikto -no404 -host "$url"
 
-        # collect words from websites
-        $TIMEOUT 300 wget -rq -O "$RECONDIR"/tmp/wget.dump "$url" >/dev/null 2>&1
-        if [[ -f "$RECONDIR"/tmp/wget.dump ]]
-        then
-            html2dic "$RECONDIR"/tmp/wget.dump 2>/dev/null |sort -u >> "$RECONDIR"/${TARGET}.webwords 
-        fi
-
-
         echo "##################################################" >>"$RECONDIR"/${TARGET}.robots.txt
         echo "${url}/robots.txt" >>"$RECONDIR"/${TARGET}.robots.txt
         curl -s ${url}/robots.txt >>"$RECONDIR"/${TARGET}.robots.txt 2>&1
@@ -760,12 +758,6 @@ function webDiscover()
 
         cat "$RECONDIR"/tmp/${TARGET}.spider.raw "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |sort -u > "$RECONDIR"/${TARGET}.spider
     done
-
-    # combine all the words from the wget spider
-    if [[ -f "$RECONDIR"/tmp/${TARGET}.webwords ]]
-    then
-        sort -u "$RECONDIR"/tmp/${TARGET}.webwords > "$RECONDIR"/${TARGET}.webwords 2>/dev/null
-    fi
 
     # second run through baseurls.  dirb may take hours
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
@@ -818,17 +810,12 @@ function webDiscover()
         pkill -t $TTY -f wget
     done
 
-    mkdir -p "$RECONDIR"/tmp/cewl >/dev/null 2>&1
     egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' "$RECONDIR"/tmp/${TARGET}.spider.raw |sort -u > "$RECONDIR"/${TARGET}.spider
     for url in $(cat "$RECONDIR"/${TARGET}.spider|sort -u)
     do
         urlfile=${url//\//,}
-		$TIMEOUT 10 cewl -d 1 -a --meta_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlmeta -e --email_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlemail -w "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewl "$url" >/dev/null 2>&1 
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.spider.html
     done
-    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewl |sort -u > "$RECONDIR"/${TARGET}.cewl
-    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlemail |sort -u > "$RECONDIR"/${TARGET}.cewlemail
-    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlmeta |sort -u > "$RECONDIR"/${TARGET}.cewlmeta
 
     cat "$RECONDIR"/${TARGET}.dirburls "$RECONDIR"/${TARGET}.spider 2>/dev/null |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |cut -d'?' -f1|cut -d'%' -f1|cut -d'"' -f1 |sort -u > /tmp/${TARGET}.urls.raw
 
@@ -855,13 +842,26 @@ function webDiscover()
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.urls.html
     done
 
+    for url in $(grep CODE:401 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb |awk '{print $2}'|sed -e 's/\/*$/\//g'|sort -u)
+    do
+        echo "${url%\?*}" >> "$RECONDIR"/${TARGET}.dirburls.401
+    done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function getHeaders()
+{
+    local url
+
     for url in $(cat "$RECONDIR"/${TARGET}.urls)
     do 
         echo "##################################################" >> "$RECONDIR"/${TARGET}.headers 2>&1
         echo "$url" >> "$RECONDIR"/${TARGET}.headers
-        $TIMEOUT 20 wget -O /dev/null --no-check-certificate -S --method=OPTIONS "$url" >> "$RECONDIR"/${TARGET}.headers 2>&1
+        $TIMEOUT 30 wget -O /dev/null --no-check-certificate -S --method=OPTIONS "$url" >> "$RECONDIR"/${TARGET}.headers 2>&1
     done
-
 
     return 0
 }
@@ -870,6 +870,7 @@ function webDiscover()
 ################################################################################
 function skipfishScan()
 {
+    local url
     local a_urls=()
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
@@ -889,16 +890,6 @@ function hydraScanURLs()
     local sslflag
     local url
     local port
-
-    for url in $(grep CODE:401 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb |awk '{print $2}'|sed -e 's/\/*$/\//g'|sort -u)
-    do
-        echo "${url%\?*}" >> "$RECONDIR"/${TARGET}.dirburls.401
-    done
-
-    if [[ ! -f "$RECONDIR"/${TARGET}.dirburls.401 ]]
-    then
-        return 0
-    fi
 
     # hydra
     for url in $(cat "$RECONDIR"/${TARGET}.dirburls.401)
@@ -935,6 +926,54 @@ function sqlmapScan()
 
     return 0
 }
+################################################################################
+
+################################################################################
+function webWords()
+{
+    local url
+    for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
+    do
+        # collect words from websites
+        $TIMEOUT 1800 wget -rq -O "$RECONDIR"/tmp/wget.dump "$url" >/dev/null 2>&1
+        if [[ -f "$RECONDIR"/tmp/wget.dump ]]
+        then
+            html2dic "$RECONDIR"/tmp/wget.dump 2>/dev/null |sort -u >> "$RECONDIR"/tmp/${TARGET}.webwords 
+            rm -f "$RECONDIR"/tmp/wget.dump >/dev/null 2>&1
+        fi
+    done
+
+    # combine all the words from the wget spider
+    if [[ -f "$RECONDIR"/tmp/${TARGET}.webwords ]]
+    then
+        sort -u "$RECONDIR"/tmp/${TARGET}.webwords > "$RECONDIR"/${TARGET}.webwords 2>/dev/null
+    fi
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function cewlCrawl()
+{
+    local url
+    local urlfile
+
+    mkdir -p "$RECONDIR"/tmp/cewl >/dev/null 2>&1
+    for url in $(cat "$RECONDIR"/${TARGET}.spider|sort -u)
+    do
+        urlfile=${url//\//,}
+		$TIMEOUT 20 cewl -d 1 -a --meta_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlmeta -e --email_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlemail -w "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewl "$url" >/dev/null 2>&1 
+        echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.spider.html
+    done
+
+    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewl |sort -u > "$RECONDIR"/${TARGET}.cewl
+    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlemail |sort -u > "$RECONDIR"/${TARGET}.cewlemail
+    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlmeta |sort -u > "$RECONDIR"/${TARGET}.cewlmeta
+
+    return 0
+}
+################################################################################
 
 ################################################################################
 function fuzzURLs()
@@ -958,7 +997,7 @@ function fuzzURLs()
 
         for file in "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.*.wfuzz.raw
         do
-            ignore=$(cat "$file" |grep 'C=' |awk '{print $3" "$4}'|sort -u -c |sort -k1 -n|tail -1|awk '{print $2" "$3}')
+            ignore=$(cat "$file" |grep 'C=' |awk '{print $3" "$4}'|sort |uniq -c |sort -k1 -n|tail -1|awk '{print $2" "$3}')
             filename=${file##*/}
             cat $file |egrep -v "$ignore|^\.\.\.\"" >> "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw} 2>&1
             egrep -q "^ID" "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw} || rm -f "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw} 
@@ -1001,7 +1040,7 @@ function davScanURLs()
     local port
     local output
 
-    for url in $(cat "$RECONDIR"/${TARGET}.urls |sed -e 's|\(^.*://.*/\).*|\1|'|egrep -v '/.*/./$|/.*/../$'|sort-u )
+    for url in $(cat "$RECONDIR"/${TARGET}.urls |sed -e 's|\(^.*://.*/\).*|\1|'|egrep -v '/.*/./$|/.*/../$'|sort -u )
     do
         # try multiple DAV scans.  None of these are 100% reliable, so try several.
         $TIMEOUT 90 davtest -cleanup -url "$url" 2>&1|grep SUCCEED >> "$RECONDIR"/${TARGET}.davtest
@@ -1032,7 +1071,7 @@ function exifScanURLs()
     for url in $(cat "$RECONDIR"/${TARGET}.urls |egrep -v '/./$|/../$' |sed -e 's|\(^.*://.*/\).*|\1|'|sort -u)
     do
         port=$(getPortFromUrl "$url")
-        output=$($TIMEOUT 60 nmap -T4 -p $port --script=http-exif-spider --script-args "http-exif-spider.url=/${url#*/*/*/}" $TARGET 2>&1)
+        output=$($TIMEOUT 60 nmap -T3 -p $port --script=http-exif-spider --script-args "http-exif-spider.url=/${url#*/*/*/}" $TARGET 2>&1)
         if echo $output |grep -q http-exif-spider:
         then
             echo "$output" >> ${TARGET}.nmap-http-exif-spider

@@ -806,8 +806,6 @@ function webDiscover()
     for url in $(cat "$RECONDIR"/${TARGET}.dirburls)
     do
         $TIMEOUT 120 wget --no-check-certificate -r -l2 --spider --force-html -D $TARGET "$url" 2>&1 | grep '^--' |grep -v '(try:' |egrep "$IP|$TARGET" | awk '{ print $3 }' >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
-        # sometimes timeout command forks badly on exit
-        pkill -t $TTY -f wget
     done
 
     egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' "$RECONDIR"/tmp/${TARGET}.spider.raw |sort -u > "$RECONDIR"/${TARGET}.spider

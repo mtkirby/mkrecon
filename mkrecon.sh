@@ -233,12 +233,6 @@ function buildEnv()
 
     DATE=$(date +"%Y%m%d%H%M")
 
-    if ps -t $(tty|cut -d'/' -f3-) 2>/dev/null |grep -q mkrecon.sh
-    then
-        echo "mkrecon is already running in your tty"
-        return 1
-    fi
-
     if [[ "$LOGNAME" != "root" ]]
     then
         echo "FAILED: you must run as root"

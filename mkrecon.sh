@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171003 Kirby
+# 20171005 Kirby
 
 
 umask 077
@@ -23,7 +23,7 @@ function MAIN()
     cd "$RECONDIR" || exit 1
     
     echo "starting openvasScan"
-	openvasScan &
+    openvasScan &
 
     echo "starting snmpScan"
     snmpScan
@@ -32,55 +32,55 @@ function MAIN()
     nmapScan
     if ! grep -q 'Ports: ' "$RECONDIR"/${TARGET}.ngrep 2>/dev/null
     then
-    	echo "FAILED: no ports found"
-    	exit 1
+        echo "FAILED: no ports found"
+        exit 1
     fi
     echo "starting ncrackScan"
     ncrackScan
     
     searchsploit --colour --nmap "$RECONDIR"/${TARGET}.xml >> "$RECONDIR"/${TARGET}.searchsploit 2>&1 &
     
-    echo "starting nmapEyeWitness"
-    nmapEyeWitness
+    echo "starting basicEyeWitness"
+    basicEyeWitness
     
     echo "starting otherNmaps"
     otherNmaps
     
     for rawport in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
     do  
-    	port=${rawport%%/*}
+        port=${rawport%%/*}
     
-    	# web
-    	if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp//http'
-    	then
-    		echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
-    	fi
-    	if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp//ssl.http'
+        # web
+        if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp//http'
         then
-    		echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
-    	fi
+            echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+        fi
+        if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp//ssl.http'
+        then
+            echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+        fi
     
-    	# rsh
-    	if echo $rawport |egrep -q '^514/open'
-    	then
+        # rsh
+        if echo $rawport |egrep -q '^514/open'
+        then
             echo "starting rshBrute"
-    		rshBrute &
-    	fi
+            rshBrute &
+        fi
     
         # nfs
         if echo $rawport |egrep -q '/open/tcp//mountd' \
         || echo $rawport |egrep -q '/open/tcp//nfs'
         then
             echo "starting nfsScan"
-    		nfsScan &
-    	fi
+            nfsScan &
+        fi
     
-    	# dns
+        # dns
         if echo $rawport |egrep -q '53/open/.*//domain'
         then
             echo "starting dnsScan"
-    		dnsScan &
-    	fi
+            dnsScan &
+        fi
     
         # ike
         if echo $rawport |egrep -q '[[:digit:]]+/open/udp//isakmp'
@@ -93,30 +93,30 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//rsync'
         then
             echo "starting rsyncScan"
-    		rsyncScan $port 
-    	fi
+            rsyncScan $port 
+        fi
     
         # cifs/smb
         if echo $rawport |egrep -q '445/open/tcp//microsoft-ds' \
         || echo $rawport |egrep -q '445/open/tcp//netbios-ssn'
         then
             echo "starting smbScan"
-    		smbScan &
-    	fi
+            smbScan &
+        fi
     
         # redis
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//redis/'
         then
             echo "starting redisScan"
-    		redisScan $port 
-    	fi
+            redisScan $port 
+        fi
     
         # ldap
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//ldap/'
         then
             echo "starting ldapScan"
             ldapScan $port
-    	fi
+        fi
 
         # elasticsearch
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//http//Elasticsearch'
@@ -137,21 +137,21 @@ function MAIN()
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
         echo "starting skipfishScan"
-    	skipfishScan
+        skipfishScan
         echo "starting webWords"
         webWords &
         echo "starting webDiscover"
-    	webDiscover
+        webDiscover
     fi
     
     if [[ -f "$RECONDIR"/${TARGET}.spider ]]
     then
         echo "starting fuzzURLs"
-    	fuzzURLs &
+        fuzzURLs &
         echo "starting sqlmapScan"
         sqlmapScan &
         echo "starting cewlCrawl"
-    	cewlCrawl &
+        cewlCrawl &
     fi
     
     if [[ -f "$RECONDIR"/${TARGET}.dirburls.401 ]]
@@ -231,7 +231,18 @@ function killHangs()
 function buildEnv()
 {
     local file
-    local pkgs="openvas-cli xmlstarlet ncrack exploitdb wfuzz curl ike-scan wget snmpcheck rsh-client bind9-host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldap-utils skipfish blindelephant joomscan seclists libwww-mechanize-perl nikto open-iscsi cewl"
+    local pkgs="openvas-cli xmlstarlet ncrack exploitdb wfuzz curl ike-scan wget snmpcheck rsh-client bind9-host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldap-utils skipfish blindelephant joomscan seclists libwww-mechanize-perl nikto open-iscsi cewl nsis rpm alien"
+    local pkg
+
+    for pkg in $pkgs
+    do
+        if ! dpkg -s $pkg >/dev/null 2>&1
+        then
+            echo "FAILED: missing apps."
+            echo "run: apt-get install -y $pkgs"
+            return 1
+        fi
+    done
 
     TIMEOUT='timeout --kill-after=10 --foreground'
     local rawtty=$(tty)
@@ -266,13 +277,6 @@ function buildEnv()
         fi
     fi
 
-    if ! which omp xmlstarlet ncrack searchsploit mech-dump wfuzz curl ike-scan wget timeout snmp-check netkit-rsh host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldapsearch skipfish joomscan iscsiadm cewl >/dev/null 2>&1
-    then
-        echo "FAILED: missing apps.  Read the script."
-        echo "run: apt-get install -y $pkgs"
-        return 1
-    fi
-    
     if ! grep -q kali /etc/os-release
     then
         echo "FAILURE: you should be running this script on kali"
@@ -382,16 +386,6 @@ function openvasScan()
         return 1
     fi  
 
-    for pkg in nsis rpm alien
-    do
-        if ! dpkg -s $pkg >/dev/null 2>&1
-        then
-            echo "installing $pkg for openvas"
-            apt-get install -y $pkg >/dev/null 2>&1
-        fi
-    done
-
-
     if ! grep -q max_checks /etc/openvas/openvassd.conf
     then
         echo "max_checks=2" >>/etc/openvas/openvassd.conf
@@ -464,14 +458,14 @@ function nmapScan()
 ################################################################################
 
 ################################################################################
-function nmapEyeWitness()
+function basicEyeWitness()
 {
     if [[ ! -f "$RECONDIR"/${TARGET}.xml ]]
     then
         echo "FAILED: no nmap xml file"
         return 1
     fi
-    screen -dmS ${TARGET}.ew.$RANDOM $TIMEOUT 3600 eyewitness -d "$RECONDIR"/${TARGET}.nmapEyeWitness --no-dns --no-prompt --all-protocols -x "$RECONDIR"/${TARGET}.xml
+    screen -dmS ${TARGET}.ew.$RANDOM $TIMEOUT 3600 eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.basicEyeWitness --no-dns --no-prompt --all-protocols -x "$RECONDIR"/${TARGET}.xml
 
     return 0
 }
@@ -815,7 +809,7 @@ function webDiscover()
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.spider.html
     done
 
-    cat "$RECONDIR"/${TARGET}.dirburls "$RECONDIR"/${TARGET}.spider 2>/dev/null |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |cut -d'?' -f1|cut -d'%' -f1|cut -d'"' -f1 |sort -u > /tmp/${TARGET}.urls.raw
+    cat "$RECONDIR"/${TARGET}.dirburls "$RECONDIR"/${TARGET}.spider 2>/dev/null  |cut -d'?' -f1|cut -d'%' -f1|cut -d'"' -f1 |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |sed -e "s|$TARGET//|$TARGET/|g" |sort -u > /tmp/${TARGET}.urls.raw
 
     # remove duplicates that have standard ports.  e.g. http://target:80/dir -> http://target/dir
     for url in $(cat /tmp/${TARGET}.urls.raw)
@@ -917,7 +911,7 @@ function sqlmapScan()
 {
     local url
 
-    for url in $(grep '?' "$RECONDIR"/${TARGET}.spider |egrep -v '/\?' |cut -d'?' -f1 |sort -u 2>/dev/null)
+    for url in $(grep '?' "$RECONDIR"/${TARGET}.spider |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)\?' |sort -u 2>/dev/null)
     do
         $TIMEOUT 300 sqlmap --random-agent --batch --flush-session -a -u "$url" 2>&1 |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed'|uniq >> "$RECONDIR"/${TARGET}.sqlmap 2>&1
     done
@@ -961,7 +955,7 @@ function cewlCrawl()
     for url in $(cat "$RECONDIR"/${TARGET}.spider|sort -u)
     do
         urlfile=${url//\//,}
-		$TIMEOUT 20 cewl -d 1 -a --meta_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlmeta -e --email_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlemail -w "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewl "$url" >/dev/null 2>&1 
+        $TIMEOUT 20 cewl -d 1 -a --meta_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlmeta -e --email_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlemail -w "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewl "$url" >/dev/null 2>&1 
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.spider.html
     done
 
@@ -998,7 +992,7 @@ function fuzzURLs()
             ignore=$(cat "$file" |grep 'C=' |awk '{print $3" "$4}'|sort |uniq -c |sort -k1 -n|tail -1|awk '{print $2" "$3}')
             filename=${file##*/}
             cat $file |egrep -v "$ignore|^\.\.\.\"" >> "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw} 2>&1
-            egrep -q "^ID" "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw} || rm -f "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw} 
+            egrep -q "[[:digit:]]:[[:space:]]+C=" "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw} || rm -f "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw} 
         done
     done
 
@@ -1104,7 +1098,7 @@ function scanURLs()
 {
     local url
 
-    screen -dmS ${TARGET}.urlsew.$RANDOM $TIMEOUT 7200 eyewitness -d "$RECONDIR"/${TARGET}.urlsEyeWitness --no-dns --no-prompt --all-protocols -f "$RECONDIR"/${TARGET}.urls
+    screen -dmS ${TARGET}.urlsew.$RANDOM $TIMEOUT 7200 eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.urlsEyeWitness --no-dns --no-prompt --all-protocols -f "$RECONDIR"/${TARGET}.urls
 
     # run whatweb on top dirs
     for url in $(egrep '/$' "$RECONDIR"/${TARGET}.urls |egrep -v '/./$|/../$')

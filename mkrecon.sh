@@ -175,6 +175,7 @@ function MAIN()
     fi
 
     if [[ -f "$RECONDIR"/${TARGET}/tmp/${TARGET}.spider.raw ]]
+    then
         echo "starting exifScanURLs"
         exifScanURLs &
     fi
@@ -333,6 +334,39 @@ function buildEnv()
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
         cat /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt \
             >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
+        cat /usr/share/seclists/Usernames/top_shortlist.txt \
+            >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/wordpress_attacks_july2014.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/rockyou-5.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/best15.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/Sucuri_Top_Wordpress_Passwords.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/splashdata_2014.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/splashdata_2015.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/SplashData-2015.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/top_shortlist.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/password-permutations.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/passwords_clarkson_82.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/rockyou-10.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+
+        echo "vagrant" >> "$RECONDIR"/tmp/users.tmp
+        echo "Demo" >> "$RECONDIR"/tmp/users.tmp
+        echo "demo" >> "$RECONDIR"/tmp/users.tmp
+        echo "calvin" >> "$RECONDIR"/tmp/passwds.tmp
+        echo "changethis" >> "$RECONDIR"/tmp/passwds.tmp
+        echo "changeme" >> "$RECONDIR"/tmp/passwds.tmp
+        echo "j5Brn9" >> "$RECONDIR"/tmp/passwds.tmp
+
         cat "$RECONDIR"/tmp/users.tmp |sort -u > "$RECONDIR"/tmp/users.lst
         cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp |sort -u > "$RECONDIR"/tmp/passwds.lst
     fi
@@ -479,7 +513,7 @@ function snmpScan()
 function nmapScan()
 {
     # other udp ports: U:111,123,12444,1258,13,13200,1604,161,17185,17555,177,1900,20110,20510,2126,2302,23196,26000,27138,27244,27777,27950,28138,30710,3123,31337,3478,3671,37,3702,3784,389,44818,4569,47808,49160,49161,49162,500,5060,53,5351,5353,5683,623,636,64738,6481,67,69,8611,8612,8767,88,9100,9600 
-    nmap --open -T3 -sT -sU -p T:1-65535,U:111,123,161,500,53,67 \
+    nmap --open -T3 -sT -sU -p T:1-65535,U:111,123,161,500,53,67,5353,1813,4500,69,177,5060,5269 \
         --script=version -sV --version-all -O \
         -oN "$RECONDIR"/${TARGET}.nmap \
         -oG "$RECONDIR"/${TARGET}.ngrep \
@@ -1199,7 +1233,7 @@ function exifScanURLs()
     local output
     local exifreport="$RECONDIR"/${TARGET}.exif.html
 
-    for url in $(cat "$RECONDIR"/${TARGET}/tmp/${TARGET}.spider.raw \
+    for url in $(cat "$RECONDIR"/tmp/${TARGET}.spider.raw \
         |egrep -i '\.(jpg|jpeg|tif|tiff|wav)$')
     do 
         # download files to /tmp because my /tmp is tmpfs (less i/o)
@@ -1304,8 +1338,8 @@ function scanURLs()
 function ncrackScan()
 {
     screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack $TIMEOUT 7200 \
-        ncrack -iX "$RECONDIR"/${TARGET}.xml -U "$RECONDIR"/tmp/users.lst \
-        -P "$RECONDIR"/tmp/passwds.lst -v -g CL=3,cr=3,to=2h
+        ncrack -iN "$RECONDIR"/${TARGET}.nmap -U "$RECONDIR"/tmp/users.lst \
+        -P "$RECONDIR"/tmp/passwds.lst -v -g CL=3,cr=5,to=3h
 
     return 0
 }

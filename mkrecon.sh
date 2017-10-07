@@ -179,7 +179,7 @@ function MAIN()
         davScanURLs &
     fi
 
-    if [[ -f "$RECONDIR"/${TARGET}/tmp/${TARGET}.spider.raw ]]
+    if [[ -f "$RECONDIR"/tmp/${TARGET}.spider.raw ]]
     then
         echo "starting exifScanURLs"
         exifScanURLs &
@@ -1240,11 +1240,11 @@ function exifScanURLs()
 
     for url in $(cat "$RECONDIR"/tmp/${TARGET}.spider.raw \
         |egrep -i '\.(jpg|jpeg|tif|tiff|wav)$')
-    do 
+    do   
         # download files to /tmp because my /tmp is tmpfs (less i/o)
         wget -q --no-check-certificate -O /tmp/${TARGET}.exiftestfile "$url"
-        if exif "$RECONDIR"/${TARGET}/tmp/exiftestfile >/dev/null 2>&1 
-        then
+        if exif /tmp/${TARGET}.exiftestfile >/dev/null 2>&1 
+        then 
             echo "<hr>" >> $exifreport
             echo "<!-- ################################################## -->" >> $exifreport
             echo "<a href='$url'>$url</a>" >> $exifreport
@@ -1253,9 +1253,9 @@ function exifScanURLs()
                 |egrep -v '^Orientation|^X-Resolution|^Y-Resolution|^Resolution Unit|^YCbCr Positioning|^Compression|^X-Resolution|^Y-Resolution|^Resolution Unit|^Exposure Time|^F-Number|^ISO Speed Ratings|^Exif Version|^Components Configura|^Compressed Bits per|^Shutter Speed|^Aperture|^Exposure Bias|^Maximum Aperture Val|^Metering Mode|^Flash|^Focal Length|^FlashPixVersion|^Color Space|^Pixel X Dimension|^Pixel Y Dimension|^Focal Plane X-Resolu|^Focal Plane Y-Resolu|^Focal Plane Resoluti|^Sensing Method|^Image Width|^Image Length|^Bits per Sample|^Photometric Interpre|^Samples per Pixel' \
                 >> $exifreport
             echo "</pre>" >> $exifreport
-        fi
-        rm -f "$RECONDIR"/${TARGET}/tmp/exiftestfile >/dev/null 2>&1
-    done
+        fi   
+        rm -f /tmp/${TARGET}.exiftestfile >/dev/null 2>&1 
+    done 
 
 #    for url in $(cat "$RECONDIR"/${TARGET}.urls \
 #        |egrep -v '/./$|/../$' |sed -e 's|\(^.*://.*/\).*|\1|'|sort -u)

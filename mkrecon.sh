@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171005 Kirby
+# 20171007 Kirby
 
 
 umask 077
@@ -140,6 +140,8 @@ function MAIN()
         skipfishScan
         echo "starting webWords"
         webWords &
+        echo "starting niktoScan"
+        niktoScan 
         echo "starting webDiscover"
         webDiscover
     fi
@@ -170,6 +172,9 @@ function MAIN()
         scanURLs &
         echo "starting davScanURLs"
         davScanURLs &
+    fi
+
+    if [[ -f "$RECONDIR"/${TARGET}/tmp/${TARGET}.spider.raw ]]
         echo "starting exifScanURLs"
         exifScanURLs &
     fi
@@ -231,8 +236,8 @@ function killHangs()
 function buildEnv()
 {
     local file
-    local pkgs="openvas-cli xmlstarlet ncrack exploitdb wfuzz curl ike-scan wget snmpcheck rsh-client bind9-host dnsrecon dnsenum hydra screen eyewitness nmap wpscan whatweb dirb ldap-utils skipfish blindelephant joomscan seclists libwww-mechanize-perl nikto open-iscsi cewl nsis rpm alien"
     local pkg
+    local pkgs="alien bind9-host blindelephant cewl curl dirb dnsenum dnsrecon exif exploitdb eyewitness hydra ike-scan joomscan ldap-utils libwww-mechanize-perl ncrack nikto nmap nsis open-iscsi openvas-cli rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
 
     for pkg in $pkgs
     do
@@ -314,13 +319,20 @@ function buildEnv()
     || [[ ! -f "$RECONDIR"/tmp/passwds.lst ]]
     then
         rm -f "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp >/dev/null 2>&1
-        #awk '{print $1}' /usr/share/wordlists/metasploit/sap_default.txt >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        #awk '{print $2}' /usr/share/wordlists/metasploit/sap_default.txt >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/idrac_default_pass.txt >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/http_default_pass.txt >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/http_default_users.txt >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
+        awk '{print $1}' /usr/share/wordlists/metasploit/sap_default.txt \
+            >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
+        awk '{print $2}' /usr/share/wordlists/metasploit/sap_default.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/wordlists/metasploit/idrac_default_pass.txt \
+            >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
+        cat /usr/share/wordlists/metasploit/http_default_pass.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/wordlists/metasploit/http_default_users.txt \
+            >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
+        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt \
+            >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
         cat "$RECONDIR"/tmp/users.tmp |sort -u > "$RECONDIR"/tmp/users.lst
         cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp |sort -u > "$RECONDIR"/tmp/passwds.lst
     fi
@@ -346,7 +358,11 @@ function buildEnv()
 
     if [[ ! -f "$RECONDIR"/tmp/dns.lst ]]
     then
-        cat /usr/share/dnsrecon/namelist.txt /usr/share/dnsenum/dns.txt /usr/share/nmap/nselib/data/vhosts-full.lst |sort -u >"$RECONDIR"/tmp/dns.lst 2>/dev/null
+        cat \
+            /usr/share/dnsrecon/namelist.txt \
+            /usr/share/dnsenum/dns.txt \
+            /usr/share/nmap/nselib/data/vhosts-full.lst \
+            |sort -u >"$RECONDIR"/tmp/dns.lst 2>/dev/null
     fi
 
     if echo $TARGET |egrep -q '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+'
@@ -419,9 +435,12 @@ function openvasScan()
         sleep 20
     done    
 
-    omp -u admin -w $password --get-report $scanUuid --format $reportCSV >"$RECONDIR"/${TARGET}.openvas.csv 2>&1
-    omp -u admin -w $password --get-report $scanUuid --format $reportTXT >"$RECONDIR"/${TARGET}.openvas.txt 2>&1
-    omp -u admin -w $password --get-report $scanUuid --format $reportHTML >"$RECONDIR"/${TARGET}.openvas.html 2>&1
+    omp -u admin -w $password --get-report $scanUuid --format $reportCSV \
+        >"$RECONDIR"/${TARGET}.openvas.csv 2>&1
+    omp -u admin -w $password --get-report $scanUuid --format $reportTXT \
+        >"$RECONDIR"/${TARGET}.openvas.txt 2>&1
+    omp -u admin -w $password --get-report $scanUuid --format $reportHTML \
+        >"$RECONDIR"/${TARGET}.openvas.html 2>&1
 
     return 0
 }
@@ -434,11 +453,20 @@ function snmpScan()
     # nmap has false negatives on snmp detection.  We'll try communities with snmp-check.
     local community
 
-    for community in $(cat /usr/share/seclists/Miscellaneous/wordlist-common-snmp-community-strings.txt /usr/share/nmap/nselib/data/snmpcommunities.lst /usr/share/seclists/Miscellaneous/snmp.txt |egrep -v '^#'|sort -u 2>/dev/null)
+    for community in $(cat \
+        /usr/share/seclists/Miscellaneous/wordlist-common-snmp-community-strings.txt \
+        /usr/share/nmap/nselib/data/snmpcommunities.lst \
+        /usr/share/seclists/Miscellaneous/snmp.txt \
+        |egrep -v '^#'|sort -u 2>/dev/null)
     do
-        echo "snmp-check -c $community $IP 2>&1 |egrep -v '^snmp-check |^Copyright |SNMP request timeout' >>\"$RECONDIR\"/tmp/${TARGET}.snmp-check 2>&1" >> "$RECONDIR"/tmp/${TARGET}.snmp-check.sh
+        echo "snmp-check -c $community $IP 2>&1 \
+            |egrep -v '^snmp-check |^Copyright |SNMP request timeout' \
+            >>\"$RECONDIR\"/tmp/${TARGET}.snmp-check 2>&1" \
+            >> "$RECONDIR"/tmp/${TARGET}.snmp-check.sh
     done
-    echo "grep -q 'System information' \"$RECONDIR\"/tmp/${TARGET}.snmp-check && mv -f \"$RECONDIR\"/tmp/${TARGET}.snmp-check \"$RECONDIR\"/${TARGET}.snmp-check" >>"$RECONDIR"/tmp/${TARGET}.snmp-check.sh
+    echo "grep -q 'System information' \"$RECONDIR\"/tmp/${TARGET}.snmp-check \
+        && mv -f \"$RECONDIR\"/tmp/${TARGET}.snmp-check \"$RECONDIR\"/${TARGET}.snmp-check" \
+        >>"$RECONDIR"/tmp/${TARGET}.snmp-check.sh
     chmod 700 "$RECONDIR"/tmp/${TARGET}.snmp-check.sh
     screen -dmS ${TARGET}.snmp-check.$RANDOM $TIMEOUT 3600 "$RECONDIR"/tmp/${TARGET}.snmp-check.sh
 
@@ -451,7 +479,12 @@ function snmpScan()
 function nmapScan()
 {
     # other udp ports: U:111,123,12444,1258,13,13200,1604,161,17185,17555,177,1900,20110,20510,2126,2302,23196,26000,27138,27244,27777,27950,28138,30710,3123,31337,3478,3671,37,3702,3784,389,44818,4569,47808,49160,49161,49162,500,5060,53,5351,5353,5683,623,636,64738,6481,67,69,8611,8612,8767,88,9100,9600 
-    nmap --open -T3 -sT -sU -p T:1-65535,U:111,123,161,500,53,67 --script=version -sV --version-all -O -oN "$RECONDIR"/${TARGET}.nmap -oG "$RECONDIR"/${TARGET}.ngrep -oX "$RECONDIR"/${TARGET}.xml $TARGET >/dev/null 2>&1
+    nmap --open -T3 -sT -sU -p T:1-65535,U:111,123,161,500,53,67 \
+        --script=version -sV --version-all -O \
+        -oN "$RECONDIR"/${TARGET}.nmap \
+        -oG "$RECONDIR"/${TARGET}.ngrep \
+        -oX "$RECONDIR"/${TARGET}.xml \
+        $TARGET >/dev/null 2>&1
 
     return 0
 }
@@ -465,7 +498,9 @@ function basicEyeWitness()
         echo "FAILED: no nmap xml file"
         return 1
     fi
-    screen -dmS ${TARGET}.ew.$RANDOM $TIMEOUT 3600 eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.basicEyeWitness --no-dns --no-prompt --all-protocols -x "$RECONDIR"/${TARGET}.xml
+    screen -dmS ${TARGET}.ew.$RANDOM $TIMEOUT 3600 \
+        eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.basicEyeWitness \
+        --no-dns --no-prompt --all-protocols -x "$RECONDIR"/${TARGET}.xml
 
     return 0
 }
@@ -504,9 +539,12 @@ function otherNmaps()
 
     # run nmap scripts in pairs that have category overlaps
     #screen -dmS ${TARGET}.nmap-authbrute.$RANDOM $TIMEOUT 14400 nmap -T3 -p $scanports --script=auth,brute -oN "$RECONDIR"/${TARGET}.nmap-authbrute $TARGET
-    screen -dmS ${TARGET}.nmap-auth.$RANDOM $TIMEOUT 14400 nmap -T3 -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
-    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM $TIMEOUT 14400 nmap -T3 -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
-    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM $TIMEOUT 14400 nmap -T3 -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
+    screen -dmS ${TARGET}.nmap-auth.$RANDOM $TIMEOUT 14400 \
+        nmap -T3 -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
+    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM $TIMEOUT 14400 \
+        nmap -T3 -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
+    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM $TIMEOUT 14400 \
+        nmap -T3 -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
 
     return 0
 }    
@@ -519,7 +557,8 @@ function rshBrute()
 
     for login in adm admin ansible apache apache2 asterisk backup cacti cassandra centos cisco control data database demo ftp guest hadoop jboss jenkins jira kafka linux manager master memcached mysql nagios named nobody operator oracle pi postgres project rabbitmq redhat redis redmine root sales sapadm server share spark squid student superman support sysadm sysadmin sysop teamspeak teamspeak3 tech test tomcat toor ubuntu unbound user user1 vagrant vmware vnc web webadmin webapp weblogic www www-data zabbix
     do
-        $TIMEOUT 900 netkit-rsh -l $login $TARGET id -a 2>&1 |grep -v 'Permission denied' >>"$RECONDIR"/${TARGET}.rsh 
+        $TIMEOUT 900 netkit-rsh -l $login $TARGET id -a 2>&1 |grep -v 'Permission denied' \
+            >>"$RECONDIR"/${TARGET}.rsh 
     done
 
     return 0
@@ -532,8 +571,10 @@ function nfsScan()
     local output
     local i
 
-    ( $TIMEOUT 90 showmount -e ${TARGET} >"$RECONDIR"/${TARGET}.showmount-e 2>&1 || rm -f "$RECONDIR"/${TARGET}.showmount-e >/dev/null 2>&1 ) &
-    ( $TIMEOUT 90 showmount -a ${TARGET} >"$RECONDIR"/${TARGET}.showmount-a 2>&1 || rm -f "$RECONDIR"/${TARGET}.showmount-a >/dev/null 2>&1 ) &
+    ( $TIMEOUT 90 showmount -e ${TARGET} >"$RECONDIR"/${TARGET}.showmount-e 2>&1 \
+        || rm -f "$RECONDIR"/${TARGET}.showmount-e >/dev/null 2>&1 ) &
+    ( $TIMEOUT 90 showmount -a ${TARGET} >"$RECONDIR"/${TARGET}.showmount-a 2>&1 \
+        || rm -f "$RECONDIR"/${TARGET}.showmount-a >/dev/null 2>&1 ) &
 
 
     # the nfs-ls nse script only works half the time
@@ -556,21 +597,31 @@ function dnsScan()
 {
     local domain
 
-    domain=$(host $IP $IP |grep 'domain name pointer' |tail -1 |sed -e 's/.*domain name pointer \(.*\)./\1/'  |sed -e 's/\.$//')
+    domain=$(host $IP $IP |grep 'domain name pointer' \
+        |tail -1 |sed -e 's/.*domain name pointer \(.*\)./\1/'  |sed -e 's/\.$//')
     if [[ "$(echo $domain |grep -o '.' |grep -c '\.')" -ge 3 ]]
     then
-        domain=$(host $IP $IP |grep 'domain name pointer' |tail -1 |sed -e 's/.*domain name pointer \(.*\)./\1/'  |sed -e 's/\.$//' |cut -d'.' -f2-)
+        domain=$(host $IP $IP |grep 'domain name pointer' |tail -1 \
+            |sed -e 's/.*domain name pointer \(.*\)./\1/'  |sed -e 's/\.$//' |cut -d'.' -f2-)
     fi
-    $TIMEOUT 900 dnsrecon -n $TARGET -r ${IP%.*}.0-${IP%.*}.255  >>"$RECONDIR"/${TARGET}.dnsreconptr 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 192.168.0.0-192.168.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.192.168 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 172.16.0.0-172.31.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.172.16 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.0.0.0-10.63.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.10.0 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.64.0.0-10.127.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.10.64 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.128.0.0-10.191.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.10.128 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.192.0.0-10.255.255.255  >>"$RECONDIR"/${TARGET}.dnsreconptr.10.192 2>&1 &
+    $TIMEOUT 900 dnsrecon -n $TARGET -r ${IP%.*}.0-${IP%.*}.255  \
+        >>"$RECONDIR"/${TARGET}.dnsreconptr 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 192.168.0.0-192.168.255.255  \
+        >>"$RECONDIR"/${TARGET}.dnsreconptr.192.168 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 172.16.0.0-172.31.255.255  \
+        >>"$RECONDIR"/${TARGET}.dnsreconptr.172.16 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.0.0.0-10.63.255.255  \
+        >>"$RECONDIR"/${TARGET}.dnsreconptr.10.0 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.64.0.0-10.127.255.255  \
+        >>"$RECONDIR"/${TARGET}.dnsreconptr.10.64 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.128.0.0-10.191.255.255  \
+        >>"$RECONDIR"/${TARGET}.dnsreconptr.10.128 2>&1 &
+    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.192.0.0-10.255.255.255  \
+        >>"$RECONDIR"/${TARGET}.dnsreconptr.10.192 2>&1 &
     if [[ $domain =~ ^..* ]]
     then
-        $TIMEOUT 90 dnsenum --dnsserver $TARGET -f "$RECONDIR"/tmp/dns.lst --nocolor --enum -p0 $domain >>"$RECONDIR"/${TARGET}.dnsenum 2>&1 &
+        $TIMEOUT 90 dnsenum --dnsserver $TARGET -f "$RECONDIR"/tmp/dns.lst --nocolor --enum -p0 $domain \
+            >>"$RECONDIR"/${TARGET}.dnsenum 2>&1 &
         $TIMEOUT 90 dnsrecon -d $domain -n $TARGET >>"$RECONDIR"/${TARGET}.dnsrecon 2>&1 &
         $TIMEOUT 90 host -a $domain. $TARGET >>"$RECONDIR"/${TARGET}.host-a 2>&1 &
         $TIMEOUT 90 host -l $domain. $TARGET >>"$RECONDIR"/${TARGET}.host-l 2>&1 &
@@ -596,12 +647,14 @@ function rsyncScan()
     local port=$1
     local share
 
-    $TIMEOUT 90 rsync --list-only --port=$port rsync://$TARGET >>"$RECONDIR"/${TARGET}.rsync 2>&1 || rm -f "$RECONDIR"/${TARGET}.rsync >/dev/null 2>&1
+    $TIMEOUT 90 rsync --list-only --port=$port rsync://$TARGET >>"$RECONDIR"/${TARGET}.rsync 2>&1 \
+        || rm -f "$RECONDIR"/${TARGET}.rsync >/dev/null 2>&1
     if [[ -f  "$RECONDIR"/${TARGET}.rsync ]]
     then
         for share in $(cat "$RECONDIR"/${TARGET}.rsync)
         do
-            $TIMEOUT 600 rsync --list-only --port=${port%%/*} rsync://$TARGET/$share >>"$RECONDIR"/${TARGET}.rsync-$share 2>&1 
+            $TIMEOUT 600 rsync --list-only --port=${port%%/*} rsync://$TARGET/$share \
+                >>"$RECONDIR"/${TARGET}.rsync-$share 2>&1 
         done
     fi
 
@@ -727,9 +780,7 @@ function webDiscover()
     # first run through baseurls
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
-        # Run nikto in the background
         urlfile=${url//\//,}
-        screen -dmS ${TARGET}.nikto.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.${urlfile}.nikto $TIMEOUT 900 nikto -no404 -host "$url"
 
         echo "##################################################" >>"$RECONDIR"/${TARGET}.robots.txt
         echo "${url}/robots.txt" >>"$RECONDIR"/${TARGET}.robots.txt
@@ -737,7 +788,8 @@ function webDiscover()
         echo "" >>"$RECONDIR"/${TARGET}.robots.txt
         echo "##################################################" >>"$RECONDIR"/${TARGET}.robots.txt
 
-        for robotdir in $(curl -s ${url}/robots.txt 2>&1 |egrep '^Disallow: ' |awk '{print $2}' |sed -e 's/\*//g' |tr -d '\r')
+        for robotdir in $(curl -s ${url}/robots.txt 2>&1 \
+            |egrep '^Disallow: ' |awk '{print $2}' |sed -e 's/\*//g' |tr -d '\r')
         do
             if [[ ! $robotdir =~ ^/$ ]] \
             && [[ ! $robotdir =~ \? ]] \
@@ -745,12 +797,18 @@ function webDiscover()
             then
                 a_robots[${#a_robots[@]}]="${url}${robotdir}"
             fi
-            $TIMEOUT 60 wget --no-check-certificate -r -l3 --spider ${url}${robotdir} 2>&1 | grep '^--' |grep -v '(try:' | awk '{ print $3 }' >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
+            $TIMEOUT 60 wget --no-check-certificate -r -l3 --spider ${url}${robotdir} 2>&1 \
+                | grep '^--' |grep -v '(try:' | awk '{ print $3 }' \
+                >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
         done
 
-        $TIMEOUT 60 wget --no-check-certificate -r -l3 --spider --force-html -D $TARGET "$url" 2>&1 | grep '^--' |grep -v '(try:' | awk '{ print $3 }' |grep $TARGET  >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
+        $TIMEOUT 60 wget --no-check-certificate -r -l3 --spider --force-html -D $TARGET "$url" 2>&1 \
+            | grep '^--' |grep -v '(try:' | awk '{ print $3 }' |grep $TARGET  \
+            >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
 
-        cat "$RECONDIR"/tmp/${TARGET}.spider.raw "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |sort -u > "$RECONDIR"/${TARGET}.spider
+        cat "$RECONDIR"/tmp/${TARGET}.spider.raw "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null \
+            |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |sort -u \
+            > "$RECONDIR"/${TARGET}.spider
     done
 
     # second run through baseurls.  dirb may take hours
@@ -762,7 +820,8 @@ function webDiscover()
         for dirbfile in ${a_dirbfiles[@]}
         do
             shortfile=${dirbfile##*/}
-            $TIMEOUT 1800 dirb "$url" "$dirbfile" -r -f -S >> "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-${shortfile}.dirb 2>&1
+            $TIMEOUT 1800 dirb "$url" "$dirbfile" -r -f -S \
+                >> "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-${shortfile}.dirb 2>&1
         done
     done
 
@@ -775,7 +834,8 @@ function webDiscover()
             # check if dirb was already run on this url
             if ! grep -q "$url" "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-${shortfile}.dirb 2>/dev/null
             then
-                $TIMEOUT 1800 dirb "$url" "$dirbfile" -r -f -S >> "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-robots-${shortfile}.dirb 2>&1
+                $TIMEOUT 1800 dirb "$url" "$dirbfile" -r -f -S \
+                    >> "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-robots-${shortfile}.dirb 2>&1
             fi
         done
     done
@@ -785,31 +845,43 @@ function webDiscover()
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.robotspider.html
     done
 
-    for url in $(grep CODE:200 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb |grep -v SIZE:0 |awk '{print $2}' |sort -u)
+    for url in $(grep CODE:200 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb \
+        |grep -v SIZE:0 |awk '{print $2}' |sort -u)
     do
         echo "${url%\?*}" >> "$RECONDIR"/tmp/${TARGET}.dirburls.raw
     done
 
-    for url in $(grep '==> DIRECTORY: ' "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb |awk '{print $3}' |sort -u)
+    for url in $(grep '==> DIRECTORY: ' "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb \
+        |awk '{print $3}' |sort -u)
     do
         echo "${url%\?*}" >> "$RECONDIR"/tmp/${TARGET}.dirburls.raw
     done
 
-    cat "$RECONDIR"/tmp/${TARGET}.dirburls.raw |sed -e 's/\/\/*$/\//g'|sed -e 's/\/\.\/*$/\//g' |sed -e 's/\/\%2e\/*$/\//g' |sort -u > "$RECONDIR"/${TARGET}.dirburls
+    cat "$RECONDIR"/tmp/${TARGET}.dirburls.raw \
+        |sed -e 's/\/\/*$/\//g'|sed -e 's/\/\.\/*$/\//g' \
+        |sed -e 's/\/\%2e\/*$/\//g' |sort -u \
+        > "$RECONDIR"/${TARGET}.dirburls
 
     for url in $(cat "$RECONDIR"/${TARGET}.dirburls)
     do
-        $TIMEOUT 120 wget --no-check-certificate -r -l2 --spider --force-html -D $TARGET "$url" 2>&1 | grep '^--' |grep -v '(try:' |egrep "$IP|$TARGET" | awk '{ print $3 }' >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
+        $TIMEOUT 120 wget --no-check-certificate -r -l2 --spider --force-html -D $TARGET "$url" 2>&1 \
+            | grep '^--' |grep -v '(try:' |egrep "$IP|$TARGET" | awk '{ print $3 }' \
+            >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
     done
 
-    egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' "$RECONDIR"/tmp/${TARGET}.spider.raw |sort -u > "$RECONDIR"/${TARGET}.spider
+    egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' "$RECONDIR"/tmp/${TARGET}.spider.raw \
+        |sort -u > "$RECONDIR"/${TARGET}.spider
     for url in $(cat "$RECONDIR"/${TARGET}.spider|sort -u)
     do
         urlfile=${url//\//,}
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.spider.html
     done
 
-    cat "$RECONDIR"/${TARGET}.dirburls "$RECONDIR"/${TARGET}.spider 2>/dev/null  |cut -d'?' -f1|cut -d'%' -f1|cut -d'"' -f1 |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |sed -e "s|$TARGET//|$TARGET/|g" |sort -u > /tmp/${TARGET}.urls.raw
+    cat "$RECONDIR"/${TARGET}.dirburls "$RECONDIR"/${TARGET}.spider 2>/dev/null  \
+        |cut -d'?' -f1|cut -d'%' -f1|cut -d'"' -f1 \
+        |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' \
+        |sed -e "s|$TARGET//|$TARGET/|g" \
+        |sort -u > /tmp/${TARGET}.urls.raw
 
     # remove duplicates that have standard ports.  e.g. http://target:80/dir -> http://target/dir
     for url in $(cat /tmp/${TARGET}.urls.raw)
@@ -834,10 +906,32 @@ function webDiscover()
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.urls.html
     done
 
-    for url in $(grep CODE:401 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb |awk '{print $2}'|sed -e 's/\/*$/\//g'|sort -u)
+    for url in $(grep CODE:401 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb \
+        |awk '{print $2}'\
+        |sed -e 's/\/*$/\//g'\
+        |sort -u)
     do
         echo "${url%\?*}" >> "$RECONDIR"/${TARGET}.dirburls.401
     done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function niktoScan()
+{
+    local url
+    local urlfile
+
+    for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
+    do
+        # Run nikto in the background
+        urlfile=${url//\//,}
+        screen -dmS ${TARGET}.nikto.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.${urlfile}.nikto \
+            $TIMEOUT 900 nikto -no404 -host "$url"
+    done
+
 
     return 0
 }
@@ -852,7 +946,8 @@ function getHeaders()
     do 
         echo "##################################################" >> "$RECONDIR"/${TARGET}.headers 2>&1
         echo "$url" >> "$RECONDIR"/${TARGET}.headers
-        $TIMEOUT 30 wget -O /dev/null --no-check-certificate -S --method=OPTIONS "$url" >> "$RECONDIR"/${TARGET}.headers 2>&1
+        $TIMEOUT 30 wget -O /dev/null --no-check-certificate -S --method=OPTIONS "$url" \
+            >> "$RECONDIR"/${TARGET}.headers 2>&1
     done
 
     return 0
@@ -869,7 +964,8 @@ function skipfishScan()
     do
         a_urls[${#a_urls[@]}]="$url"
     done
-    screen -dmS ${TARGET}.skipfish.$RANDOM skipfish -k 0:30:00 -g2 -f20 -o "$RECONDIR"/${TARGET}.skipfish ${a_urls[*]}
+    screen -dmS ${TARGET}.skipfish.$RANDOM \
+        skipfish -k 0:30:00 -g2 -f20 -o "$RECONDIR"/${TARGET}.skipfish ${a_urls[*]}
     return 0
 }
 ################################################################################
@@ -896,8 +992,11 @@ function hydraScanURLs()
         path=/${url#*//*/}
         hydrafile=${url//\//,}.hydra
         mkdir -p "$RECONDIR"/${TARGET}.hydra >/dev/null 2>&1
-        $TIMEOUT 600 hydra -I -L "$RECONDIR"/tmp/users.lst -P "$RECONDIR"/tmp/passwds.lst -e nsr -u -f -t 5 $sslflag -s $port $TARGET http-get "$path" >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
-        grep -q 'valid pair found' "$RECONDIR"/${TARGET}.hydra/${hydrafile} || rm -f "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>/dev/null
+        $TIMEOUT 600 hydra -I -L "$RECONDIR"/tmp/users.lst -P "$RECONDIR"/tmp/passwds.lst -e nsr \
+            -u -f -t 5 $sslflag -s $port $TARGET http-get "$path" \
+            >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
+        grep -q 'valid pair found' "$RECONDIR"/${TARGET}.hydra/${hydrafile} \
+            || rm -f "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>/dev/null
     done
     rmdir "$RECONDIR"/${TARGET}.hydra >/dev/null 2>&1
 
@@ -913,7 +1012,9 @@ function sqlmapScan()
 
     for url in $(grep '?' "$RECONDIR"/${TARGET}.spider |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)\?' |sort -u 2>/dev/null)
     do
-        $TIMEOUT 300 sqlmap --random-agent --batch --flush-session -a -u "$url" 2>&1 |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed'|uniq >> "$RECONDIR"/${TARGET}.sqlmap 2>&1
+        $TIMEOUT 300 sqlmap --random-agent --batch --flush-session -a -u "$url" 2>&1 \
+            |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed|do you want to skip' \
+        |uniq >> "$RECONDIR"/${TARGET}.sqlmap 2>&1
     done
 
     return 0
@@ -955,8 +1056,10 @@ function cewlCrawl()
     for url in $(cat "$RECONDIR"/${TARGET}.spider|sort -u)
     do
         urlfile=${url//\//,}
-        $TIMEOUT 20 cewl -d 1 -a --meta_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlmeta -e --email_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlemail -w "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewl "$url" >/dev/null 2>&1 
-        echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.spider.html
+        $TIMEOUT 20 cewl -d 1 -a --meta_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlmeta \
+            -e --email_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlemail \
+            -w "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewl \
+            "$url" >/dev/null 2>&1 
     done
 
     cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewl |sort -u > "$RECONDIR"/${TARGET}.cewl
@@ -977,22 +1080,45 @@ function fuzzURLs()
     local filename
 
     mkdir -p "$RECONDIR"/${TARGET}.wfuzz/raws >/dev/null 2>&1
-    grep '?' "$RECONDIR"/${TARGET}.spider |egrep -v '/\?' |sed -e 's/\(\?[^=]*\)=[^&]*/\1=FUZZ/g' |sed -e 's/\(\&[^=]*\)=[^&]*/\1=FUZZ/g' |sed -e 's/\?$/\?FUZZ/'|sort -u 2>/dev/null > "$RECONDIR"/tmp/${TARGET}.spider.FUZZ
+    grep '?' "$RECONDIR"/${TARGET}.spider \
+        |egrep -v '/\?' \
+        |sed -e 's/\(\?[^=]*\)=[^&]*/\1=FUZZ/g' \
+        |sed -e 's/\(\&[^=]*\)=[^&]*/\1=FUZZ/g' \
+        |sed -e 's/\?$/\?FUZZ/'|sort -u 2>/dev/null \
+        > "$RECONDIR"/tmp/${TARGET}.spider.FUZZ
+
     for url in $(cat "$RECONDIR"/tmp/${TARGET}.spider.FUZZ)
     do
         wfuzzfile=${url//\//,}
-        $TIMEOUT 60 wfuzz --hc 404 -w /usr/share/wfuzz/wordlist/vulns/sql_inj.txt "$url" >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.sql.wfuzz.raw 2>&1
-        $TIMEOUT 60 wfuzz --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt "$url" >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtnix.wfuzz.raw 2>&1
-        $TIMEOUT 60 wfuzz --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt "$url" >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.raw 2>&1
+        $TIMEOUT 90 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/sql_inj.txt "$url" \
+            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.sql.wfuzz.raw.html 2>&1
+        $TIMEOUT 90 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt "$url" \
+            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtnix.wfuzz.raw.html 2>&1
+        $TIMEOUT 90 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt "$url" \
+            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.raw.html 2>&1
         # sometimes timeout command forks badly on exit
         pkill -t $TTY -f wfuzz
 
-        for file in "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.*.wfuzz.raw
+        for file in "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.*.wfuzz.raw.html
         do
-            ignore=$(cat "$file" |grep 'C=' |awk '{print $3" "$4}'|sort |uniq -c |sort -k1 -n|tail -1|awk '{print $2" "$3}')
+            ignore=$(cat "$file" \
+                |egrep -E "\d*L" \
+                |sed -e 's/.*[^0-9]\([0-9]*L\).*[^0-9]\([0-9]*W\).*/\1 \2/'\
+                |sort \
+                |uniq -c\
+                |sort -k1 -n \
+                |tail -1\
+                |awk '{print $2".*"$3}')
+
+            bgcolor=#FFFFFF text=#000000
             filename=${file##*/}
-            cat $file |egrep -v "$ignore|^\.\.\.\"" >> "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw} 2>&1
-            egrep -q "[[:digit:]]:[[:space:]]+C=" "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw} || rm -f "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw} 
+            cat $file \
+                |egrep -v "$ignore" \
+                |sed -e 's/bgcolor=#000000/bgcolor=#FFFFFF/g' \
+                |sed -e 's/text=#FFFFFF/text=#000000/g' \
+                >> "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html 2>&1
+            egrep -q "00aa00" "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html \
+                || rm -f "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html
         done
     done
 
@@ -1006,13 +1132,15 @@ function mechDumpURLs()
     local url
     local output
 
-    for url in $(cat "$RECONDIR"/${TARGET}.urls |egrep -v '/./$|/../$' |egrep -v '/\?')
+    for url in $(cat "$RECONDIR"/${TARGET}.urls \
+        |egrep -v '/./$|/../$' \
+        |egrep -v '/\?')
     do
-        #mech-dump --all --text "$url" >> "$RECONDIR"/${TARGET}.mech-dump 2>/dev/null
         output=$($TIMEOUT 60 mech-dump --absolute --forms "$url" 2>/dev/null)
         if [[ ${#output} -gt 0 ]]
         then
-            echo "################################################################################" >> "$RECONDIR"/${TARGET}.mech-dump
+            echo "################################################################################" \
+                >> "$RECONDIR"/${TARGET}.mech-dump
             echo "URL: $url" >> "$RECONDIR"/${TARGET}.mech-dump
             echo "$output" >> "$RECONDIR"/${TARGET}.mech-dump
         fi
@@ -1032,22 +1160,32 @@ function davScanURLs()
     local port
     local output
 
-    for url in $(cat "$RECONDIR"/${TARGET}.urls |sed -e 's|\(^.*://.*/\).*|\1|'|egrep -v '/.*/./$|/.*/../$'|sort -u )
+    for url in $(cat "$RECONDIR"/${TARGET}.urls \
+        |sed -e 's|\(^.*://.*/\).*|\1|'\
+        |egrep -v '/.*/./$|/.*/../$'\
+        |sort -u )
     do
         # try multiple DAV scans.  None of these are 100% reliable, so try several.
         $TIMEOUT 90 davtest -cleanup -url "$url" 2>&1|grep SUCCEED >> "$RECONDIR"/${TARGET}.davtest
 
-        echo ls | $TIMEOUT 10 cadaver "$url" 2>&1 |egrep -v 'command can only be used when connected to the server.|^Try running|^Could not access|^405 Method|^Connection to' >> "$RECONDIR"/${TARGET}.cadaver
+        echo ls | $TIMEOUT 10 cadaver "$url" 2>&1 \
+            |egrep -v 'command can only be used when connected to the server.|^Try running|^Could not access|^405 Method|^Connection to' \
+            >> "$RECONDIR"/${TARGET}.cadaver
 
         port=$(getPortFromUrl "$url")
-        output=$($TIMEOUT 90 nmap -p $port -Pn --script http-webdav-scan --script-args "http-webdav-scan.path=/${url#*/*/*/}" ${TARGET} 2>&1 )
+        output=$($TIMEOUT 90 nmap -p $port -Pn \
+            --script http-webdav-scan \
+            --script-args "http-webdav-scan.path=/${url#*/*/*/}" \
+            ${TARGET} 2>&1 )
         if echo $output |grep -q http-webdav-scan:
         then
             echo "$output" >>"$RECONDIR"/${TARGET}.nmap-webdav
         fi
     done
-    grep -q SUCCEED "$RECONDIR"/${TARGET}.davtest 2>/dev/null || rm -f "$RECONDIR"/${TARGET}.davtest >/dev/null 2>&1
-    grep -q succeeded "$RECONDIR"/${TARGET}.cadaver 2>/dev/null || rm -f "$RECONDIR"/${TARGET}.cadaver >/dev/null 2>&1
+    grep -q SUCCEED "$RECONDIR"/${TARGET}.davtest 2>/dev/null \
+        || rm -f "$RECONDIR"/${TARGET}.davtest >/dev/null 2>&1
+    grep -q succeeded "$RECONDIR"/${TARGET}.cadaver 2>/dev/null \
+        || rm -f "$RECONDIR"/${TARGET}.cadaver >/dev/null 2>&1
 
     return 0
 }
@@ -1059,16 +1197,40 @@ function exifScanURLs()
     local url
     local port
     local output
+    local exifreport="$RECONDIR"/${TARGET}.exif.html
 
-    for url in $(cat "$RECONDIR"/${TARGET}.urls |egrep -v '/./$|/../$' |sed -e 's|\(^.*://.*/\).*|\1|'|sort -u)
-    do
-        port=$(getPortFromUrl "$url")
-        output=$($TIMEOUT 60 nmap -T3 -p $port --script=http-exif-spider --script-args "http-exif-spider.url=/${url#*/*/*/}" $TARGET 2>&1)
-        if echo $output |grep -q http-exif-spider:
+    for url in $(cat "$RECONDIR"/${TARGET}/tmp/${TARGET}.spider.raw \
+        |egrep -i '\.(jpg|jpeg|tif|tiff|wav)$')
+    do 
+        # download files to /tmp because my /tmp is tmpfs (less i/o)
+        wget -q --no-check-certificate -O /tmp/${TARGET}.exiftestfile "$url"
+        if exif "$RECONDIR"/${TARGET}/tmp/exiftestfile >/dev/null 2>&1 
         then
-            echo "$output" >> ${TARGET}.nmap-http-exif-spider
+            echo "<hr>" >> $exifreport
+            echo "<!-- ################################################## -->" >> $exifreport
+            echo "<a href='$url'>$url</a>" >> $exifreport
+            echo "<pre>" >> $exifreport
+            exif /tmp/${TARGET}.exiftestfile 2>/dev/null \
+                |egrep -v '^Orientation|^X-Resolution|^Y-Resolution|^Resolution Unit|^YCbCr Positioning|^Compression|^X-Resolution|^Y-Resolution|^Resolution Unit|^Exposure Time|^F-Number|^ISO Speed Ratings|^Exif Version|^Components Configura|^Compressed Bits per|^Shutter Speed|^Aperture|^Exposure Bias|^Maximum Aperture Val|^Metering Mode|^Flash|^Focal Length|^FlashPixVersion|^Color Space|^Pixel X Dimension|^Pixel Y Dimension|^Focal Plane X-Resolu|^Focal Plane Y-Resolu|^Focal Plane Resoluti|^Sensing Method|^Image Width|^Image Length|^Bits per Sample|^Photometric Interpre|^Samples per Pixel' \
+                >> $exifreport
+            echo "</pre>" >> $exifreport
         fi
+        rm -f "$RECONDIR"/${TARGET}/tmp/exiftestfile >/dev/null 2>&1
     done
+
+#    for url in $(cat "$RECONDIR"/${TARGET}.urls \
+#        |egrep -v '/./$|/../$' |sed -e 's|\(^.*://.*/\).*|\1|'|sort -u)
+#    do
+#        port=$(getPortFromUrl "$url")
+#        output=$($TIMEOUT 60 nmap -T3 -p $port \
+#            --script=http-exif-spider \
+#            --script-args "http-exif-spider.url=/${url#*/*/*/}" \
+#            $TARGET 2>&1)
+#        if echo $output |grep -q http-exif-spider:
+#        then
+#            echo "$output" >> ${TARGET}.nmap-http-exif-spider
+#        fi
+#    done
 
     return 0
 }
@@ -1098,21 +1260,26 @@ function scanURLs()
 {
     local url
 
-    screen -dmS ${TARGET}.urlsew.$RANDOM $TIMEOUT 7200 eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.urlsEyeWitness --no-dns --no-prompt --all-protocols -f "$RECONDIR"/${TARGET}.urls
+    screen -dmS ${TARGET}.urlsew.$RANDOM $TIMEOUT 7200 \
+        eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.urlsEyeWitness \
+        --no-dns --no-prompt --all-protocols -f "$RECONDIR"/${TARGET}.urls
 
     # run whatweb on top dirs
     for url in $(egrep '/$' "$RECONDIR"/${TARGET}.urls |egrep -v '/./$|/../$')
     do
         if [[ "$(echo $url |grep -o '.' |grep -c '/')" -le 4 ]]
         then
-            egrep -q "^$url" "$RECONDIR"/${TARGET}.whatweb 2>/dev/null || $TIMEOUT 300 whatweb -a3 --color=never "$url" >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
+            egrep -q "^$url" "$RECONDIR"/${TARGET}.whatweb 2>/dev/null \
+                || $TIMEOUT 300 whatweb -a3 --color=never "$url" \
+                >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
         fi
     done
 
     # run wpscan on first found wordpress
     for url in $(grep -i wordpress "$RECONDIR"/${TARGET}.whatweb 2>/dev/null |head -1 |awk '{print $1}')
     do
-        $TIMEOUT 900 wpscan -t 10 --follow-redirection --disable-tls-checks -e --no-banner --no-color --batch --url "$url" > "$RECONDIR"/${TARGET}.wpscan 2>&1 &
+        $TIMEOUT 900 wpscan -t 10 --follow-redirection --disable-tls-checks -e \
+            --no-banner --no-color --batch --url "$url" > "$RECONDIR"/${TARGET}.wpscan 2>&1 &
     done
 
     # run joomscan on first found joomla
@@ -1124,7 +1291,9 @@ function scanURLs()
     # run fimap on anything with php
     for url in $(egrep -i '\.php$' "$RECONDIR"/${TARGET}.urls |awk '{print $1}')
     do
-        $TIMEOUT 300 fimap --force-run -4 -u "$url" 2>&1 |egrep -v '^fimap |^Another fimap|^:: |^Starting harvester|^No links found|^AutoAwesome is done' >> "$RECONDIR"/${TARGET}.fimap
+        $TIMEOUT 300 fimap --force-run -4 -u "$url" 2>&1 \
+            |egrep -v '^fimap |^Another fimap|^:: |^Starting harvester|^No links found|^AutoAwesome is done' \
+            >> "$RECONDIR"/${TARGET}.fimap
     done
 
     return 0
@@ -1134,12 +1303,19 @@ function scanURLs()
 ################################################################################
 function ncrackScan()
 {
-    screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack $TIMEOUT 7200 ncrack -iX "$RECONDIR"/${TARGET}.xml -U "$RECONDIR"/tmp/users.lst -P "$RECONDIR"/tmp/passwds.lst -v -g CL=3,cr=3,to=2h
+    screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack $TIMEOUT 7200 \
+        ncrack -iX "$RECONDIR"/${TARGET}.xml -U "$RECONDIR"/tmp/users.lst \
+        -P "$RECONDIR"/tmp/passwds.lst -v -g CL=3,cr=3,to=2h
 
     return 0
 }
 ################################################################################
 
+
+set > /tmp/set1
+
 MAIN $*
 stty sane >/dev/null 2>&1
+
+set > /tmp/set2
 

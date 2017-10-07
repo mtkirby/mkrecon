@@ -8,6 +8,11 @@ umask 077
 function MAIN()
 { 
     #set -x
+
+    local job
+    local jobscount
+    local port
+    local rawport
     
     export TARGET=$1 
     export RECONDIR="${HOME}/mkrecon/${TARGET}"
@@ -190,9 +195,9 @@ function MAIN()
         then
             echo "killing jobs"
             killHangs
-            for i in $(jobs -l |awk '{print $2}')
+            for job in $(jobs -l |awk '{print $2}')
             do
-                kill $i
+                kill $job
             done
         else
             sleep 60
@@ -547,7 +552,7 @@ function otherNmaps()
     local a_udpports=()
     local a_urls=()
     local port
-    local tcppports
+    local tcpports
     local udpports
     local scanports
 

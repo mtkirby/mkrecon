@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171007 Kirby
+# 20171009 Kirby
 
 
 umask 077
@@ -188,10 +188,10 @@ function MAIN()
     jobscount=0
     while jobs |grep -q Running
     do
-        echo "Jobs are still running.  Waiting $jobscount out of 180"
+        echo "Jobs are still running.  Waiting $jobscount out of 240"
         jobs -l
         (( jobscount++ ))
-        if [[ "$jobscount" -ge 180 ]]
+        if [[ "$jobscount" -ge 240 ]]
         then
             echo "killing jobs"
             killHangs
@@ -836,18 +836,15 @@ function webDiscover()
             then
                 a_robots[${#a_robots[@]}]="${url}${robotdir}"
             fi
-            $TIMEOUT 60 wget --no-check-certificate -r -l3 --spider ${url}${robotdir} 2>&1 \
+            $TIMEOUT 60 \
+                wget --no-check-certificate -r -l3 --spider --force-html -D $TARGET ${url}${robotdir} 2>&1 \
                 | grep '^--' |grep -v '(try:' | awk '{ print $3 }' \
                 >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
         done
 
         $TIMEOUT 60 wget --no-check-certificate -r -l3 --spider --force-html -D $TARGET "$url" 2>&1 \
-            | grep '^--' |grep -v '(try:' | awk '{ print $3 }' |grep $TARGET  \
+            | grep '^--' |grep -v '(try:' | awk '{ print $3 }' |grep "/$TARGET[:/]"  \
             >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
-
-        cat "$RECONDIR"/tmp/${TARGET}.spider.raw "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null \
-            |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |sort -u \
-            > "$RECONDIR"/${TARGET}.spider
     done
 
     # second run through baseurls.  dirb may take hours
@@ -908,14 +905,16 @@ function webDiscover()
             >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
     done
 
-    egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' "$RECONDIR"/tmp/${TARGET}.spider.raw \
-        |sort -u > "$RECONDIR"/${TARGET}.spider
+    cat "$RECONDIR"/tmp/${TARGET}.spider.raw "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null \
+        |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |sort -u \
+        > "$RECONDIR"/${TARGET}.spider
     for url in $(cat "$RECONDIR"/${TARGET}.spider|sort -u)
     do
         urlfile=${url//\//,}
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.spider.html
     done
 
+    # combine wget spider and dirb
     cat "$RECONDIR"/${TARGET}.dirburls "$RECONDIR"/${TARGET}.spider 2>/dev/null  \
         |cut -d'?' -f1|cut -d'%' -f1|cut -d'"' -f1 \
         |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' \
@@ -985,7 +984,7 @@ function getHeaders()
     do 
         echo "##################################################" >> "$RECONDIR"/${TARGET}.headers 2>&1
         echo "$url" >> "$RECONDIR"/${TARGET}.headers
-        $TIMEOUT 30 wget -O /dev/null --no-check-certificate -S --method=OPTIONS "$url" \
+        $TIMEOUT 30 wget -O /dev/null --no-check-certificate -S  -D $TARGET --method=OPTIONS "$url" \
             >> "$RECONDIR"/${TARGET}.headers 2>&1
     done
 
@@ -1049,11 +1048,11 @@ function sqlmapScan()
 {
     local url
 
-    for url in $(grep '?' "$RECONDIR"/${TARGET}.spider |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)\?' |sort -u 2>/dev/null)
+    for url in $(grep '?' "$RECONDIR"/${TARGET}.spider 2>/dev/null)
     do
         $TIMEOUT 300 sqlmap --random-agent --batch --flush-session -a -u "$url" 2>&1 \
             |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed|do you want to skip' \
-        |uniq >> "$RECONDIR"/${TARGET}.sqlmap 2>&1
+            |uniq >> "$RECONDIR"/${TARGET}.sqlmap 2>&1
     done
 
     return 0
@@ -1067,7 +1066,7 @@ function webWords()
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
         # collect words from websites
-        $TIMEOUT 1800 wget -rq -O "$RECONDIR"/tmp/wget.dump "$url" >/dev/null 2>&1
+        $TIMEOUT 1800 wget -rq -D $TARGET -O "$RECONDIR"/tmp/wget.dump "$url" >/dev/null 2>&1
         if [[ -f "$RECONDIR"/tmp/wget.dump ]]
         then
             html2dic "$RECONDIR"/tmp/wget.dump 2>/dev/null |sort -u >> "$RECONDIR"/tmp/${TARGET}.webwords 
@@ -1092,7 +1091,7 @@ function cewlCrawl()
     local urlfile
 
     mkdir -p "$RECONDIR"/tmp/cewl >/dev/null 2>&1
-    for url in $(cat "$RECONDIR"/${TARGET}.spider|sort -u)
+    for url in $(cat "$RECONDIR"/${TARGET}.spider)
     do
         urlfile=${url//\//,}
         $TIMEOUT 20 cewl -d 1 -a --meta_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlmeta \
@@ -1242,7 +1241,7 @@ function exifScanURLs()
         |egrep -i '\.(jpg|jpeg|tif|tiff|wav)$')
     do   
         # download files to /tmp because my /tmp is tmpfs (less i/o)
-        wget -q --no-check-certificate -O /tmp/${TARGET}.exiftestfile "$url"
+        wget -q --no-check-certificate -D $TARGET -O /tmp/${TARGET}.exiftestfile "$url"
         if exif /tmp/${TARGET}.exiftestfile >/dev/null 2>&1 
         then 
             echo "<hr>" >> $exifreport

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171009 Kirby
+# 20171023 Kirby
 
 
 umask 077
@@ -243,7 +243,7 @@ function buildEnv()
 {
     local file
     local pkg
-    local pkgs="alien bind9-host blindelephant cewl curl dirb dnsenum dnsrecon exif exploitdb eyewitness hydra ike-scan joomscan ldap-utils libwww-mechanize-perl ncrack nikto nmap nsis open-iscsi openvas-cli rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
+    local pkgs="alien bind9-host blindelephant cewl curl dirb dnsenum dnsrecon exif exploitdb eyewitness hydra ike-scan joomscan jq ldap-utils libwww-mechanize-perl ncrack nikto nmap nsis open-iscsi openvas-cli rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
 
     for pkg in $pkgs
     do
@@ -364,9 +364,104 @@ function buildEnv()
         cat /usr/share/seclists/Passwords/rockyou-10.txt \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
 
-        echo "vagrant" >> "$RECONDIR"/tmp/users.tmp
         echo "Demo" >> "$RECONDIR"/tmp/users.tmp
         echo "demo" >> "$RECONDIR"/tmp/users.tmp
+        echo "account" >> "$RECONDIR"/tmp/users.tmp
+        echo "activemq" >> "$RECONDIR"/tmp/users.tmp
+        echo "adm" >> "$RECONDIR"/tmp/users.tmp
+        echo "admin" >> "$RECONDIR"/tmp/users.tmp
+        echo "ansible" >> "$RECONDIR"/tmp/users.tmp
+        echo "apache" >> "$RECONDIR"/tmp/users.tmp
+        echo "apache2" >> "$RECONDIR"/tmp/users.tmp
+        echo "app" >> "$RECONDIR"/tmp/users.tmp
+        echo "appserver" >> "$RECONDIR"/tmp/users.tmp
+        echo "asterisk" >> "$RECONDIR"/tmp/users.tmp
+        echo "backup" >> "$RECONDIR"/tmp/users.tmp
+        echo "cacti" >> "$RECONDIR"/tmp/users.tmp
+        echo "cassandra" >> "$RECONDIR"/tmp/users.tmp
+        echo "centos" >> "$RECONDIR"/tmp/users.tmp
+        echo "ceph" >> "$RECONDIR"/tmp/users.tmp
+        echo "ceph-admin" >> "$RECONDIR"/tmp/users.tmp
+        echo "chef" >> "$RECONDIR"/tmp/users.tmp
+        echo "chef_server" >> "$RECONDIR"/tmp/users.tmp
+        echo "cisco" >> "$RECONDIR"/tmp/users.tmp
+        echo "clamav" >> "$RECONDIR"/tmp/users.tmp
+        echo "control" >> "$RECONDIR"/tmp/users.tmp
+        echo "data" >> "$RECONDIR"/tmp/users.tmp
+        echo "database" >> "$RECONDIR"/tmp/users.tmp
+        echo "dovecot" >> "$RECONDIR"/tmp/users.tmp
+        echo "elasticsearch" >> "$RECONDIR"/tmp/users.tmp
+        echo "ftp" >> "$RECONDIR"/tmp/users.tmp
+        echo "guest" >> "$RECONDIR"/tmp/users.tmp
+        echo "hadoop" >> "$RECONDIR"/tmp/users.tmp
+        echo "haproxy" >> "$RECONDIR"/tmp/users.tmp
+        echo "hbase" >> "$RECONDIR"/tmp/users.tmp
+        echo "jboss" >> "$RECONDIR"/tmp/users.tmp
+        echo "jenkins" >> "$RECONDIR"/tmp/users.tmp
+        echo "jira" >> "$RECONDIR"/tmp/users.tmp
+        echo "joomla" >> "$RECONDIR"/tmp/users.tmp
+        echo "kafka" >> "$RECONDIR"/tmp/users.tmp
+        echo "kibana" >> "$RECONDIR"/tmp/users.tmp
+        echo "linux" >> "$RECONDIR"/tmp/users.tmp
+        echo "logstash" >> "$RECONDIR"/tmp/users.tmp
+        echo "manager" >> "$RECONDIR"/tmp/users.tmp
+        echo "master" >> "$RECONDIR"/tmp/users.tmp
+        echo "memcached" >> "$RECONDIR"/tmp/users.tmp
+        echo "mongod" >> "$RECONDIR"/tmp/users.tmp
+        echo "mongodb" >> "$RECONDIR"/tmp/users.tmp
+        echo "mysql" >> "$RECONDIR"/tmp/users.tmp
+        echo "nagios" >> "$RECONDIR"/tmp/users.tmp
+        echo "named" >> "$RECONDIR"/tmp/users.tmp
+        echo "nginx" >> "$RECONDIR"/tmp/users.tmp
+        echo "nobody" >> "$RECONDIR"/tmp/users.tmp
+        echo "nrpe" >> "$RECONDIR"/tmp/users.tmp
+        echo "operator" >> "$RECONDIR"/tmp/users.tmp
+        echo "oracle" >> "$RECONDIR"/tmp/users.tmp
+        echo "pi" >> "$RECONDIR"/tmp/users.tmp
+        echo "postgres" >> "$RECONDIR"/tmp/users.tmp
+        echo "project" >> "$RECONDIR"/tmp/users.tmp
+        echo "puppet" >> "$RECONDIR"/tmp/users.tmp
+        echo "rabbitmq" >> "$RECONDIR"/tmp/users.tmp
+        echo "redhat" >> "$RECONDIR"/tmp/users.tmp
+        echo "redis" >> "$RECONDIR"/tmp/users.tmp
+        echo "redmine" >> "$RECONDIR"/tmp/users.tmp
+        echo "root" >> "$RECONDIR"/tmp/users.tmp
+        echo "rundeck" >> "$RECONDIR"/tmp/users.tmp
+        echo "sales" >> "$RECONDIR"/tmp/users.tmp
+        echo "sapadm" >> "$RECONDIR"/tmp/users.tmp
+        echo "server" >> "$RECONDIR"/tmp/users.tmp
+        echo "share" >> "$RECONDIR"/tmp/users.tmp
+        echo "spark" >> "$RECONDIR"/tmp/users.tmp
+        echo "squid" >> "$RECONDIR"/tmp/users.tmp
+        echo "student" >> "$RECONDIR"/tmp/users.tmp
+        echo "superman" >> "$RECONDIR"/tmp/users.tmp
+        echo "support" >> "$RECONDIR"/tmp/users.tmp
+        echo "sysadm" >> "$RECONDIR"/tmp/users.tmp
+        echo "sysadmin" >> "$RECONDIR"/tmp/users.tmp
+        echo "sysop" >> "$RECONDIR"/tmp/users.tmp
+        echo "teamspeak" >> "$RECONDIR"/tmp/users.tmp
+        echo "teamspeak3" >> "$RECONDIR"/tmp/users.tmp
+        echo "tech" >> "$RECONDIR"/tmp/users.tmp
+        echo "test" >> "$RECONDIR"/tmp/users.tmp
+        echo "tomcat" >> "$RECONDIR"/tmp/users.tmp
+        echo "toor" >> "$RECONDIR"/tmp/users.tmp
+        echo "ubuntu" >> "$RECONDIR"/tmp/users.tmp
+        echo "unbound" >> "$RECONDIR"/tmp/users.tmp
+        echo "user" >> "$RECONDIR"/tmp/users.tmp
+        echo "user1" >> "$RECONDIR"/tmp/users.tmp
+        echo "vagrant" >> "$RECONDIR"/tmp/users.tmp
+        echo "vmware" >> "$RECONDIR"/tmp/users.tmp
+        echo "vnc" >> "$RECONDIR"/tmp/users.tmp
+        echo "web" >> "$RECONDIR"/tmp/users.tmp
+        echo "webadmin" >> "$RECONDIR"/tmp/users.tmp
+        echo "webapp" >> "$RECONDIR"/tmp/users.tmp
+        echo "weblogic" >> "$RECONDIR"/tmp/users.tmp
+        echo "wordpress" >> "$RECONDIR"/tmp/users.tmp
+        echo "www" >> "$RECONDIR"/tmp/users.tmp
+        echo "www-data" >> "$RECONDIR"/tmp/users.tmp
+        echo "zabbix" >> "$RECONDIR"/tmp/users.tmp
+        echo "zookeeper" >> "$RECONDIR"/tmp/users.tmp
+
         echo "calvin" >> "$RECONDIR"/tmp/passwds.tmp
         echo "changethis" >> "$RECONDIR"/tmp/passwds.tmp
         echo "changeme" >> "$RECONDIR"/tmp/passwds.tmp
@@ -424,7 +519,8 @@ function buildEnv()
 ################################################################################
 function openvasScan()
 {
-    local password='notMyPassword'
+    local ovusername='admin'
+    local ovpassword='notMyPassword'
     local targetUuid
     local configUuid
     local taskUuid
@@ -434,51 +530,53 @@ function openvasScan()
     local reportHTML
     local pkg
 
-    if ! omp -u admin -w $password -g >/dev/null 2>&1
+    if ! omp -u $ovusername -w $ovpassword -g >/dev/null 2>&1
     then
-        echo "FAILED: UNABLE TO CONNECT TO OPENVAS"
-        echo "If you want to use OpenVas, change the password in the openvasScan function"
+        echo "WARNING: UNABLE TO CONNECT TO OPENVAS"
+        echo "If you need to install OpenVas, run apt-get install -y greenbone-security-assistant greenbone-security-assistant-common openvas openvas-cli openvas-manager openvas-manager-common openvas-scanner"
+        echo "Then run openvas-check-setup and follow the instructions until it says everything is working."
+        echo "Also change the username/password in the openvasScan function of this script."
         return 1
-    fi  
+    fi
 
     if ! grep -q max_checks /etc/openvas/openvassd.conf
     then
         echo "max_checks=2" >>/etc/openvas/openvassd.conf
-    fi  
+    fi
 
-    reportCSV=$(omp -u admin -w $password -F |awk '/  CSV Results$/ {print $1}' |head -1)
-    reportTXT=$(omp -u admin -w $password -F |awk '/  TXT$/ {print $1}' |head -1)
-    reportHTML=$(omp -u admin -w $password -F |awk '/  HTML$/ {print $1}' |head -1)
+    reportCSV=$(omp -u $ovusername -w $ovpassword -F |awk '/  CSV Results$/ {print $1}' |head -1)
+    reportTXT=$(omp -u $ovusername -w $ovpassword -F |awk '/  TXT$/ {print $1}' |head -1)
+    reportHTML=$(omp -u $ovusername -w $ovpassword -F |awk '/  HTML$/ {print $1}' |head -1)
 
-    configUuid=$(omp -u admin -w $password -g|egrep ' Full and fast$'|awk '{print $1}')
+    configUuid=$(omp -u $ovusername -w $ovpassword -g|egrep ' Full and fast$'|awk '{print $1}')
 
-    targetUuid=$(omp -u admin -w $password --pretty-print --xml "<create_target>
+    targetUuid=$(omp -u $ovusername -w $ovpassword --pretty-print --xml "<create_target>
           <name>${TARGET}-$RANDOM</name>
           <hosts>${TARGET}</hosts>
           </create_target>" |xmlstarlet sel -t -v /create_target_response/@id)
 
-    if ! taskUuid=$(omp -u admin -w $password -C --config=$configUuid --target=$targetUuid -n ${TARGET}-${DATE})
+    if ! taskUuid=$(omp -u $ovusername -w $ovpassword -C --config=$configUuid --target=$targetUuid -n ${TARGET}-${DATE})
     then
         echo "FAILED: UNABLE TO CREATE OPENVAS TASK"
         return 1
-    fi      
+    fi
 
-    if ! scanUuid=$(omp -u admin -w $password -S $taskUuid)
+    if ! scanUuid=$(omp -u $ovusername -w $ovpassword -S $taskUuid)
     then
         echo "FAILED: UNABLE TO START OPENVAS TASK"
         return 1
-    fi      
+    fi
 
-    while ! omp -u admin -w $password -G $taskUuid 2>/dev/null|grep $taskUuid|grep -q Done
-    do  
+    while ! omp -u $ovusername -w $ovpassword -G $taskUuid 2>/dev/null|grep $taskUuid|grep -q Done
+    do
         sleep 20
-    done    
+    done
 
-    omp -u admin -w $password --get-report $scanUuid --format $reportCSV \
+    omp -u $ovusername -w $ovpassword --get-report $scanUuid --format $reportCSV \
         >"$RECONDIR"/${TARGET}.openvas.csv 2>&1
-    omp -u admin -w $password --get-report $scanUuid --format $reportTXT \
+    omp -u $ovusername -w $ovpassword --get-report $scanUuid --format $reportTXT \
         >"$RECONDIR"/${TARGET}.openvas.txt 2>&1
-    omp -u admin -w $password --get-report $scanUuid --format $reportHTML \
+    omp -u $ovusername -w $ovpassword --get-report $scanUuid --format $reportHTML \
         >"$RECONDIR"/${TARGET}.openvas.html 2>&1
 
     return 0
@@ -594,7 +692,7 @@ function rshBrute()
 {
     local login
 
-    for login in adm admin ansible apache apache2 asterisk backup cacti cassandra centos cisco control data database demo ftp guest hadoop jboss jenkins jira kafka linux manager master memcached mysql nagios named nobody operator oracle pi postgres project rabbitmq redhat redis redmine root sales sapadm server share spark squid student superman support sysadm sysadmin sysop teamspeak teamspeak3 tech test tomcat toor ubuntu unbound user user1 vagrant vmware vnc web webadmin webapp weblogic www www-data zabbix
+    for login in $(cat "$RECONDIR"/tmp/users.lst)
     do
         $TIMEOUT 900 netkit-rsh -l $login $TARGET id -a 2>&1 |grep -v 'Permission denied' \
             >>"$RECONDIR"/${TARGET}.rsh 
@@ -734,7 +832,8 @@ function iscsiScan()
 {
     local port=$1
 
-    $TIMEOUT 90 iscsiadm -m discovery -t st -p ${TARGET}:${port} >> "$RECONDIR"/${TARGET}.iscsiadm 2>&1
+    $TIMEOUT 90 iscsiadm -m discovery -t st -p ${TARGET}:${port} \
+        >> "$RECONDIR"/${TARGET}.iscsiadm 2>&1
 
     return 0
 }
@@ -744,13 +843,19 @@ function iscsiScan()
 function elasticsearchScan()
 {
     local port=$1
+    local index
 
-    $TIMEOUT 90 curl -s "http://${TARGET}:${port}/_cat/indices?v" >> "$RECONDIR"/${TARGET}.elasticsearch 2>&1
+    $TIMEOUT 90 curl -s "http://${TARGET}:${port}/_cat/indices?v" > "$RECONDIR"/${TARGET}.elasticsearch.${port} 2>&1
+    mkdir "$RECONDIR"/${TARGET}.elasticsearch.indexes.${port}
+    for index in $(awk '{print $3}' "$RECONDIR"/${TARGET}.elasticsearch.${port} |egrep -v "^index$" )
+    do
+        $TIMEOUT 60 curl -s "http://${TARGET}:${port}/${index}/" 2>/dev/null |jq . \
+            > "$RECONDIR"/${TARGET}.elasticsearch.indexes.${port}/$index 2>&1
+    done
 
     return 0
 }
 ################################################################################
-
 
 ################################################################################
 function redisScan()
@@ -760,7 +865,8 @@ function redisScan()
 
     for i in {0..16}
     do
-        $TIMEOUT 90 redis-cli -h $TARGET -p $port -n $i --scan >> "$RECONDIR"/${TARGET}.redis 2>&1
+        $TIMEOUT 90 redis-cli -h $TARGET -p $port -n $i --scan \
+            >> "$RECONDIR"/${TARGET}.redis 2>&1
     done
 
     return 0
@@ -772,7 +878,8 @@ function ldapScan()
 {
     local port=$1
 
-    $TIMEOUT 90 ldapsearch -h $TARGET -p $port -x -s base >> "$RECONDIR"/${TARGET}.ldap 2>&1
+    $TIMEOUT 90 ldapsearch -h $TARGET -p $port -x -s base \
+        >> "$RECONDIR"/${TARGET}.ldap 2>&1
 
     return 0
 }
@@ -1030,12 +1137,14 @@ function hydraScanURLs()
         path=/${url#*//*/}
         hydrafile=${url//\//,}.hydra
         mkdir -p "$RECONDIR"/${TARGET}.hydra >/dev/null 2>&1
-        $TIMEOUT 600 hydra -I -L "$RECONDIR"/tmp/users.lst -P "$RECONDIR"/tmp/passwds.lst -e nsr \
+        $TIMEOUT 600 hydra -I -L "$RECONDIR"/tmp/users.lst \
+            -P "$RECONDIR"/tmp/passwds.lst -e nsr \
             -u -f -t 5 $sslflag -s $port $TARGET http-get "$path" \
             >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
         grep -q 'valid pair found' "$RECONDIR"/${TARGET}.hydra/${hydrafile} \
             || rm -f "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>/dev/null
     done
+    #remove directory if empty
     rmdir "$RECONDIR"/${TARGET}.hydra >/dev/null 2>&1
 
     return 0
@@ -1349,7 +1458,7 @@ function ncrackScan()
 }
 ################################################################################
 
-
+# record settings to diff for variable leakage
 set > /tmp/set1
 
 MAIN $*

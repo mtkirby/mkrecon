@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171025 Kirby
+# 20171029 Kirby
 
 
 umask 077
@@ -347,43 +347,43 @@ function buildEnv()
     || [[ ! -f "$RECONDIR"/tmp/passwds.lst ]]
     then
         rm -f "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp >/dev/null 2>&1
-        awk '{print $1}' /usr/share/wordlists/metasploit/sap_default.txt \
+        awk '{print $1}' /usr/share/wordlists/metasploit/sap_default.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        awk '{print $2}' /usr/share/wordlists/metasploit/sap_default.txt \
+        awk '{print $2}' /usr/share/wordlists/metasploit/sap_default.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/idrac_default_pass.txt \
+        cat /usr/share/wordlists/metasploit/idrac_default_pass.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/http_default_pass.txt \
+        cat /usr/share/wordlists/metasploit/http_default_pass.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/http_default_users.txt \
+        cat /usr/share/wordlists/metasploit/http_default_users.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt \
+        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt \
+        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/seclists/Usernames/top_shortlist.txt \
+        cat /usr/share/seclists/Usernames/top_shortlist.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/wordpress_attacks_july2014.txt \
+        cat /usr/share/seclists/Passwords/wordpress_attacks_july2014.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/rockyou-5.txt \
+        cat /usr/share/seclists/Passwords/rockyou-5.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/best15.txt \
+        cat /usr/share/seclists/Passwords/best15.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/Sucuri_Top_Wordpress_Passwords.txt \
+        cat /usr/share/seclists/Passwords/Sucuri_Top_Wordpress_Passwords.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/splashdata_2014.txt \
+        cat /usr/share/seclists/Passwords/splashdata_2014.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/splashdata_2015.txt \
+        cat /usr/share/seclists/Passwords/splashdata_2015.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/SplashData-2015.txt \
+        cat /usr/share/seclists/Passwords/SplashData-2015.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/top_shortlist.txt \
+        cat /usr/share/seclists/Passwords/top_shortlist.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/password-permutations.txt \
+        cat /usr/share/seclists/Passwords/password-permutations.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/passwords_clarkson_82.txt \
+        cat /usr/share/seclists/Passwords/passwords_clarkson_82.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/rockyou-10.txt \
+        cat /usr/share/seclists/Passwords/rockyou-10.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
 
         echo "Demo" >> "$RECONDIR"/tmp/users.tmp
@@ -489,8 +489,8 @@ function buildEnv()
         echo "changeme" >> "$RECONDIR"/tmp/passwds.tmp
         echo "j5Brn9" >> "$RECONDIR"/tmp/passwds.tmp
 
-        cat "$RECONDIR"/tmp/users.tmp |sort -u > "$RECONDIR"/tmp/users.lst
-        cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp |sort -u > "$RECONDIR"/tmp/passwds.lst
+        cat "$RECONDIR"/tmp/users.tmp |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/users.lst
+        cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/passwds.lst
     fi
 
     rm -f "$RECONDIR"/tmp/mkrecon.txt >/dev/null 2>&1
@@ -1054,12 +1054,12 @@ function webDiscover()
         echo "${url%\?*}" >> "$RECONDIR"/tmp/${TARGET}.dirburls.raw
     done
 
-    cat "$RECONDIR"/tmp/${TARGET}.dirburls.raw \
+    cat "$RECONDIR"/tmp/${TARGET}.dirburls.raw 2>/dev/null \
         |sed -e 's/\/\/*$/\//g'|sed -e 's/\/\.\/*$/\//g' \
         |sed -e 's/\/\%2e\/*$/\//g' |sort -u \
         > "$RECONDIR"/${TARGET}.dirburls
 
-    for url in $(cat "$RECONDIR"/${TARGET}.dirburls)
+    for url in $(cat "$RECONDIR"/${TARGET}.dirburls 2>/dev/null )
     do
         $TIMEOUT 120 wget --no-check-certificate -r -l2 --spider --force-html -D $TARGET "$url" 2>&1 \
             | grep '^--' |grep -v '(try:' |egrep "$IP|$TARGET" | awk '{ print $3 }' \
@@ -1083,7 +1083,7 @@ function webDiscover()
         |sort -u > /tmp/${TARGET}.urls.raw
 
     # remove duplicates that have standard ports.  e.g. http://target:80/dir -> http://target/dir
-    for url in $(cat /tmp/${TARGET}.urls.raw)
+    for url in $(cat /tmp/${TARGET}.urls.raw 2>/dev/null )
     do
         if echo $url|grep ':80/' |egrep -q '^http://'
         then 
@@ -1096,16 +1096,16 @@ function webDiscover()
         fi
         echo $newurl >> /tmp/${TARGET}.urls.stripped
     done
-    cat /tmp/${TARGET}.urls.stripped|sort -u > "$RECONDIR"/${TARGET}.urls 
+    cat /tmp/${TARGET}.urls.stripped 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.urls 
     rm -f /tmp/${TARGET}.urls.stripped >/dev/null 2>&1
     rm -f /tmp/${TARGET}.urls.raw >/dev/null 2>&1
 
-    for url in $(cat "$RECONDIR"/${TARGET}.urls)
+    for url in $(cat "$RECONDIR"/${TARGET}.urls 2>/dev/null )
     do 
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.urls.html
     done
 
-    for url in $(grep CODE:401 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb \
+    for url in $(grep CODE:401 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb 2>/dev/null \
         |awk '{print $2}'\
         |sed -e 's/\/*$/\//g'\
         |sort -u)
@@ -1254,7 +1254,7 @@ function cewlCrawl()
     local urlfile
 
     mkdir -p "$RECONDIR"/tmp/cewl >/dev/null 2>&1
-    for url in $(cat "$RECONDIR"/${TARGET}.spider)
+    for url in $(cat "$RECONDIR"/${TARGET}.spider 2>/dev/null )
     do
         urlfile=${url//\//,}
         $TIMEOUT 20 cewl -d 1 -a --meta_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlmeta \
@@ -1263,9 +1263,9 @@ function cewlCrawl()
             "$url" >/dev/null 2>&1 
     done
 
-    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewl |sort -u > "$RECONDIR"/${TARGET}.cewl
-    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlemail |sort -u > "$RECONDIR"/${TARGET}.cewlemail
-    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlmeta |sort -u > "$RECONDIR"/${TARGET}.cewlmeta
+    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewl 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.cewl
+    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlemail 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.cewlemail
+    cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlmeta 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.cewlmeta
 
     return 0
 }
@@ -1288,7 +1288,7 @@ function fuzzURLs()
         |sed -e 's/\?$/\?FUZZ/'|sort -u 2>/dev/null \
         > "$RECONDIR"/tmp/${TARGET}.spider.FUZZ
 
-    for url in $(cat "$RECONDIR"/tmp/${TARGET}.spider.FUZZ)
+    for url in $(cat "$RECONDIR"/tmp/${TARGET}.spider.FUZZ 2>/dev/null)
     do
         wfuzzfile=${url//\//,}
         $TIMEOUT 90 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/sql_inj.txt "$url" \
@@ -1306,9 +1306,9 @@ function fuzzURLs()
                 |egrep -E "\d*L" \
                 |sed -e 's/.*[^0-9]\([0-9]*L\).*[^0-9]\([0-9]*W\).*/\1 \2/'\
                 |sort \
-                |uniq -c\
+                |uniq -c \
                 |sort -k1 -n \
-                |tail -1\
+                |tail -1 \
                 |awk '{print $2".*"$3}')
 
             bgcolor=#FFFFFF text=#000000
@@ -1361,7 +1361,7 @@ function davScanURLs()
     local port
     local output
 
-    for url in $(cat "$RECONDIR"/${TARGET}.urls \
+    for url in $(cat "$RECONDIR"/${TARGET}.urls 2>/dev/null \
         |sed -e 's|\(^.*://.*/\).*|\1|'\
         |egrep -v '/.*/./$|/.*/../$'\
         |sort -u )
@@ -1400,7 +1400,7 @@ function exifScanURLs()
     local output
     local exifreport="$RECONDIR"/${TARGET}.exif.html
 
-    for url in $(cat "$RECONDIR"/tmp/${TARGET}.spider.raw \
+    for url in $(cat "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null \
         |egrep -i '\.(jpg|jpeg|tif|tiff|wav)$')
     do   
         # download files to /tmp because my /tmp is tmpfs (less i/o)
@@ -1419,7 +1419,7 @@ function exifScanURLs()
         rm -f /tmp/${TARGET}.exiftestfile >/dev/null 2>&1 
     done 
 
-#    for url in $(cat "$RECONDIR"/${TARGET}.urls \
+#    for url in $(cat "$RECONDIR"/${TARGET}.urls 2>/dev/null \
 #        |egrep -v '/./$|/../$' |sed -e 's|\(^.*://.*/\).*|\1|'|sort -u)
 #    do
 #        port=$(getPortFromUrl "$url")

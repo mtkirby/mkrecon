@@ -181,7 +181,37 @@ function dumpPackages()
     fi
     if which dpkg >/dev/null 2>&1
     then
-        dpkg -l |awk '/^ii/ {print $2" " $3}' |sed -e 's/ [[:digit:]]:/ /g' |sed -e 's/\+.*//g' |sed -e 's/-[[:digit:]].*//g' |sort|uniq >> /tmp/searchsploit
+        dpkg -l |awk '/^ii/ {print $2" " $3}' |sed -e 's/ [[:digit:]]:/ /g' |sed -e 's/\+.*//g' |sed -e 's/-[[:digit:]].*//g' |sort |uniq >> /tmp/searchsploit
+    fi
+    if which apk >/dev/null 2>&1
+    then
+        apk -vv info |awk '{print $1}' |sed -e 's/\(.*\)-\([0-9].*\)-.*/\1 \2/' |sort |uniq >> /tmp/searchsploit
+    fi
+    if which opkg >/dev/null 2>&1
+    then
+        for pkg in $(opkg info |awk '/Package: / {print $2}' |sort|uniq)
+        do 
+            version=$(opkg info $pkg|awk '/Version: / {print $2}'|sed -e 's/\(.*\)-.*/\1/')
+            echo "$pkg $version" >> /tmp/searchsploit
+        done
+    fi
+    if which pkg >/dev/null 2>&1 && uname -s 2>/dev/null |grep -qi freebsd
+    then
+        for pkg in $(pkg info |awk '{print $1}' |sort|uniq)
+        do 
+            name=$(pkg info $pkg |awk '/^Name/ {print $3}')
+            version=$(pkg info $pkg|awk '/^Version/ {print $3}' |cut -d'_' -f1)
+            echo "$name $version" >> /tmp/searchsploit
+        done
+    fi
+    if which pkg >/dev/null 2>&1 && uname -s 2>/dev/null |grep -qi sunos
+    then
+        for pkg in $(pkg list |awk '{print $1}' |sort|uniq)
+        do 
+            name=$(pkg info $pkg |awk '/Name:/ {print $2}' |sed -e 's|.*/\(.*\)|\1|')
+            version=$(pkg info $pkg|awk '/Version:/ {print $2}')
+            echo "$name $version" >> /tmp/searchsploit
+        done
     fi
 
     if [[ -f /tmp/searchsploit ]]

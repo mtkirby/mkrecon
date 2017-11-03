@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171029 Kirby
+# 20171102 Kirby
 
 
 umask 077
@@ -53,6 +53,11 @@ function MAIN()
     
     for rawport in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
     do  
+        if ! echo $rawport |egrep -q '[[:digit:]]+/open'
+        then
+            continue
+        fi  
+
         port=${rawport%%/*}
     
         # web
@@ -68,13 +73,17 @@ function MAIN()
         # sometimes nmap can't identify a web service, so just try anyways
         if $TIMEOUT 60 wget --tries=1 -O /dev/null --no-check-certificate -S  -D $TARGET \
             --method=HEAD http://${TARGET}:${port} 2>&1 \
-            |egrep -qi 'HTTP/|X-|Content|Date'
+            |egrep -qi 'HTTP/|X-|Content|Date' \
+        && ! grep -q "http://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls \
+            >/dev/null 2>&1
         then
             echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
         fi
         if $TIMEOUT 60 wget --tries=1 -O /dev/null --no-check-certificate -S  -D $TARGET \
             --method=HEAD https://${TARGET}:${port} 2>&1 \
-            |egrep -qi 'HTTP/|X-|Content|Date'
+            |egrep -qi 'HTTP/|X-|Content|Date' \
+        && ! grep -q "https://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls \
+            >/dev/null 2>&1
         then
             echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
         fi
@@ -484,6 +493,7 @@ function buildEnv()
         echo "zabbix" >> "$RECONDIR"/tmp/users.tmp
         echo "zookeeper" >> "$RECONDIR"/tmp/users.tmp
 
+        echo "adminadmin" >> "$RECONDIR"/tmp/passwds.tmp
         echo "calvin" >> "$RECONDIR"/tmp/passwds.tmp
         echo "changethis" >> "$RECONDIR"/tmp/passwds.tmp
         echo "changeme" >> "$RECONDIR"/tmp/passwds.tmp
@@ -867,12 +877,12 @@ function dockerScan()
     for id in $(grep '"Id": ' "$RECONDIR"/${TARGET}.dockercontainers |cut -d'"' -f4)
     do
         $TIMEOUT 60 curl http://${TARGET}:${port}/containers/${id}/top 2>/dev/null|jq -M . \
-            >> "$RECONDIR"/${TARGET}.dockertop.${id}
+            >> "$RECONDIR"/dockertop.${id}
         $TIMEOUT 60 curl http://${TARGET}:${port}/containers/${id}/changes 2>/dev/null|jq -M . \
-            >> "$RECONDIR"/${TARGET}.dockerchanges.${id}
+            >> "$RECONDIR"/dockerchanges.${id}
         $TIMEOUT 60 curl "http://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
             2>/dev/null|tar xf - -O \
-            >> "$RECONDIR"/${TARGET}.dockershadow.${id}
+            >> "$RECONDIR"/dockershadow.${id}
 
     done
 
@@ -1127,7 +1137,7 @@ function niktoScan()
     do
         # Run nikto in the background
         urlfile=${url//\//,}
-        screen -dmS ${TARGET}.nikto.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.${urlfile}.nikto \
+        screen -dmS ${TARGET}.nikto.$RANDOM -L -Logfile "$RECONDIR"/${urlfile}.nikto \
             $TIMEOUT 900 nikto -no404 -host "$url"
     done
 

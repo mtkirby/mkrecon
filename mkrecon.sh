@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171102 Kirby
+# 20171130 Kirby
 
 
 umask 077
@@ -498,6 +498,7 @@ function buildEnv()
         echo "changethis" >> "$RECONDIR"/tmp/passwds.tmp
         echo "changeme" >> "$RECONDIR"/tmp/passwds.tmp
         echo "j5Brn9" >> "$RECONDIR"/tmp/passwds.tmp
+        echo "UNKNOWN" >> "$RECONDIR"/tmp/passwds.tmp
 
         cat "$RECONDIR"/tmp/users.tmp |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/users.lst
         cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/passwds.lst
@@ -1480,9 +1481,12 @@ function scanURLs()
     do
         if [[ "$(echo $url |grep -o '.' |grep -c '/')" -le 4 ]]
         then
-            egrep -q "^$url" "$RECONDIR"/${TARGET}.whatweb 2>/dev/null \
-                || $TIMEOUT 300 whatweb -a3 --color=never "$url" \
-                >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
+            if ! egrep -q "^$url" "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
+            then
+                $TIMEOUT 300 whatweb -a3 --color=never "$url" \
+                    >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
+                echo '' >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
+            fi
         fi
     done
 

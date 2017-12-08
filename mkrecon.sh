@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171130 Kirby
+# 20171207 Kirby
 
 
 umask 077
@@ -167,6 +167,19 @@ function MAIN()
             echo "starting dockerScan"
             dockerScan $port &
         fi
+        # postgres
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//postgresql'
+        then
+            echo "starting postgresqlScan"
+            postgresqlScan $port &
+        fi
+
+        # mysql
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//mysql'
+        then
+            echo "starting mysqlScan"
+            mysqlScan $port &
+        fi
     
     done
     
@@ -274,7 +287,7 @@ function buildEnv()
 {
     local file
     local pkg
-    local pkgs="alien bind9-host blindelephant cewl curl dirb dnsenum dnsrecon exif exploitdb eyewitness hydra ike-scan joomscan jq ldap-utils libwww-mechanize-perl ncrack nikto nmap nsis open-iscsi openvas-cli rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
+    local pkgs="alien bind9-host blindelephant cewl curl dirb dnsenum dnsrecon exif exploitdb eyewitness hydra ike-scan joomscan jq ldap-utils libxml2-utils libwww-mechanize-perl mariadb-common ncrack nikto nmap nsis open-iscsi openvas-cli postgresql-client-common rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
 
     for pkg in $pkgs
     do
@@ -855,6 +868,30 @@ function smbScan()
         echo "" >>"$RECONDIR"/${TARGET}.rpcclient
         echo "" >>"$RECONDIR"/${TARGET}.rpcclient
     done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function mysqlScan()
+{
+    local port=$1
+
+    $TIMEOUT 60 mysql -u root -e 'show databases;' --connect-timeout=30 -h $TARGET \
+        >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function postgresqlScan()
+{
+    local port=$1
+
+    $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -l \
+        >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
 
     return 0
 }

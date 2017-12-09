@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171207 Kirby
+# 20171208 Kirby
 
 
 umask 077
@@ -878,7 +878,7 @@ function mysqlScan()
 {
     local port=$1
 
-    $TIMEOUT 60 mysql -u root -e 'show databases;' --connect-timeout=30 -h $TARGET \
+    $TIMEOUT 60 mysql -E -u root -e 'show databases; select host,user,password from mysql.user;' --connect-timeout=30 -h $TARGET \
         >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
 
     return 0
@@ -891,6 +891,8 @@ function postgresqlScan()
     local port=$1
 
     $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -l \
+        >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+    $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -x -c 'select * from pg_catalog.pg_shadow;' \
         >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
 
     return 0

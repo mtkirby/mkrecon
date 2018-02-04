@@ -1,5 +1,5 @@
 set -o vi
-HOST=`/bin/uname -n`
+HOST=`/bin/uname -n 2>/dev/null || /usr/bin/uname -n 2>/dev/null`
 if [ "$TERM" == "xterm" ];then
         PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOST}:${PWD}\007"'
 fi
@@ -21,11 +21,11 @@ shopt -s dotglob
 umask 022
 if [ $USER == "root" ]; then
     export PS1='\n    ###  \u@\h  ?$?  &\j  \t  ###\n\w # '
-    ulimit -u unlimited
-    ulimit -l unlimited
-    ulimit -i unlimited
-    ulimit -s unlimited
-    ulimit -q unlimited
+    ulimit -u unlimited >/dev/null 2>&1
+    ulimit -l unlimited >/dev/null 2>&1
+    ulimit -i unlimited >/dev/null 2>&1
+    ulimit -s unlimited >/dev/null 2>&1
+    ulimit -q unlimited >/dev/null 2>&1
 else
     export PS1='\n    ###  \u@\h  ?$?  &\j  \t  ###\n\w # '
 fi
@@ -44,7 +44,9 @@ function mkprobe()
 {
     echo "##################################################" 
     echo "# FINDING SETUID/SETGID"
-    find / -xdev -type f -perm /u=s,g=s -exec ls -ld {} \; 2>/dev/null
+    #find / -xdev -type f -perm /u=s,g=s -exec ls -ld {} \; 2>/dev/null
+    find / -xdev -type f \( -perm  -4000 -o -perm -2000 \) -exec ls -ld {} \;
+
 
     echo "##################################################" 
     echo "# FINDING WORLD WRITABLE"
@@ -95,7 +97,7 @@ function mkprobe()
 
     echo "##################################################" 
     echo "# NETSTAT -PEANUT LISTENERS"
-    netstat -peanut|grep LISTEN
+    netstat -peanut 2>/dev/null |grep LISTEN || netstat -an |grep LISTEN
 
     echo "##################################################" 
     echo "# DF -A"
@@ -143,11 +145,11 @@ function mkprobe()
 
     echo "##################################################" 
     echo "# IPTABLES-SAVE"
-    iptables-save
+    iptables-save 2>/dev/null
 
     echo "##################################################" 
     echo "# IP6TABLES-SAVE"
-    ip6tables-save
+    ip6tables-save 2>/dev/null
 
     echo "##################################################" 
     echo "# FIND PASSW FILES"

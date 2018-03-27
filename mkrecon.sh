@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180315 Kirby
+# 20180319 Kirby
 
 
 umask 077
@@ -306,7 +306,7 @@ function buildEnv()
         if ! dpkg -s $pkg >/dev/null 2>&1
         then
             echo "FAILED: missing apps."
-            echo "run: apt-get install -y $pkgs"
+            echo "run: apt-get update; apt-get upgrade -y; apt-get install -y $pkgs"
             return 1
         fi
     done
@@ -351,9 +351,9 @@ function buildEnv()
     fi
 
     # make sure we have dictionary files
-    for file in /usr/share/seclists/Miscellaneous/wordlist-common-snmp-community-strings.txt \
+    for file in /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \
     /usr/share/nmap/nselib/data/snmpcommunities.lst \
-    /usr/share/seclists/Miscellaneous/snmp.txt \
+    /usr/share/seclists/Discovery/SNMP/snmp.txt \
     /usr/share/wordlists/metasploit/sap_default.txt \
     /usr/share/wordlists/metasploit/idrac_default_pass.txt \
     /usr/share/wordlists/metasploit/http_default_pass.txt \
@@ -370,7 +370,7 @@ function buildEnv()
         if [[ ! -f "$file" ]]
         then
             echo "FAILURE: missing file $file"
-            echo "run: apt-get install -y pkgs"
+            echo "run: apt-get install -y $pkgs"
             return 1
         fi
     done
@@ -664,9 +664,9 @@ function snmpScan()
     local community
 
     for community in $(cat \
-        /usr/share/seclists/Miscellaneous/wordlist-common-snmp-community-strings.txt \
+        /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \
         /usr/share/nmap/nselib/data/snmpcommunities.lst \
-        /usr/share/seclists/Miscellaneous/snmp.txt \
+        /usr/share/seclists/Discovery/SNMP/snmp.txt \
         |egrep -v '^#'|sort -u 2>/dev/null)
     do
         echo "snmp-check -c $community $IP 2>&1 \

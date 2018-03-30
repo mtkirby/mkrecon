@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180319 Kirby
+# 20180329 Kirby
 
 
 umask 077
@@ -33,7 +33,7 @@ function MAIN()
     openvasScan &
 
     echo "starting snmpScan"
-    snmpScan
+    snmpScan &
     
     echo "starting nmapScan"
     nmapScan
@@ -43,15 +43,15 @@ function MAIN()
         exit 1
     fi
     echo "starting ncrackScan"
-    ncrackScan
+    ncrackScan &
     
     searchsploit --colour --nmap "$RECONDIR"/${TARGET}.xml >> "$RECONDIR"/${TARGET}.searchsploit 2>&1 &
     
     echo "starting basicEyeWitness"
-    basicEyeWitness
+    basicEyeWitness &
     
     echo "starting otherNmaps"
-    otherNmaps
+    otherNmaps &
     
     for rawport in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
     do  
@@ -127,14 +127,14 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/udp//isakmp'
         then
             echo "starting ikeScan"
-            ikeScan $port 
+            ikeScan $port &
         fi
     
         # rsync
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//rsync'
         then
             echo "starting rsyncScan"
-            rsyncScan $port 
+            rsyncScan $port &
         fi
     
         # cifs/smb
@@ -198,13 +198,13 @@ function MAIN()
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
         echo "starting skipfishScan"
-        skipfishScan
+        skipfishScan &
         echo "starting webWords"
         webWords &
         echo "starting niktoScan"
-        niktoScan 
+        niktoScan &
         echo "starting webDiscover"
-        webDiscover
+        webDiscover &
     fi
     
     if [[ -f "$RECONDIR"/${TARGET}.spider ]]
@@ -845,7 +845,7 @@ function dnsScan()
 function ikeScan()
 {
     local port=$1
-    $TIMEOUT 90 ike-scan -d $port $TARGET >>"$RECONDIR"/${TARGET}.ike-scan 2>&1 
+    $TIMEOUT 90 ike-scan -d $port $TARGET >>"$RECONDIR"/${TARGET}.${port}.ike-scan 2>&1 
 
     return 0
 }
@@ -857,14 +857,14 @@ function rsyncScan()
     local port=$1
     local share
 
-    $TIMEOUT 90 rsync --list-only --port=$port rsync://$TARGET >>"$RECONDIR"/${TARGET}.rsync 2>&1 \
-        || rm -f "$RECONDIR"/${TARGET}.rsync >/dev/null 2>&1
-    if [[ -f  "$RECONDIR"/${TARGET}.rsync ]]
+    $TIMEOUT 90 rsync --list-only --port=$port rsync://$TARGET >>"$RECONDIR"/${TARGET}.${port}.rsync 2>&1 \
+        || rm -f "$RECONDIR"/${TARGET}.${port}.rsync >/dev/null 2>&1
+    if [[ -f  "$RECONDIR"/${TARGET}.${port}.rsync ]]
     then
-        for share in $(cat "$RECONDIR"/${TARGET}.rsync)
+        for share in $(cat "$RECONDIR"/${TARGET}.${port}.rsync)
         do
             $TIMEOUT 600 rsync --list-only --port=${port%%/*} rsync://$TARGET/$share \
-                >>"$RECONDIR"/${TARGET}.rsync-$share 2>&1 
+                >>"$RECONDIR"/${TARGET}.${port}.rsync-$share 2>&1 
         done
     fi
 

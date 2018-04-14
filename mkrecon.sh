@@ -206,7 +206,7 @@ function MAIN()
         echo "starting webWords"
         webWords 
         echo "starting webDiscover"
-        webDiscover &
+        webDiscover 
     fi
     
     if [[ -f "$RECONDIR"/${TARGET}.spider ]]

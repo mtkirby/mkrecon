@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180329 Kirby
+# 20180414 Kirby
 
 
 umask 077
@@ -53,6 +53,7 @@ function MAIN()
     echo "starting otherNmaps"
     otherNmaps &
     
+    echo "examining open ports"
     for rawport in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
     do  
         if ! echo $rawport |egrep -q '[[:digit:]]+/open/'
@@ -61,6 +62,7 @@ function MAIN()
         fi  
 
         port=${rawport%%/*}
+        echo "examining port $port"
     
         # web
         if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp//http'
@@ -91,9 +93,9 @@ function MAIN()
         fi
 
         # check for SSL/TLS
-        if echo quit|openssl s_client -showcerts -connect ${TARGET}:${port} 2>/dev/null |grep CERTIFICATE >/dev/null 2>&1
+        if echo quit|$TIMEOUT 30 openssl s_client -showcerts -connect ${TARGET}:${port} 2>/dev/null |grep CERTIFICATE >/dev/null 2>&1
         then
-            echo quit|openssl s_client -showcerts -connect ${TARGET}:${port} > "$RECONDIR"/${TARGET}.${port}.certificate 2>&1
+            echo quit|$TIMEOUT 30 openssl s_client -showcerts -connect ${TARGET}:${port} > "$RECONDIR"/${TARGET}.${port}.certificate 2>&1
             ssl=1
             proto="https"
         else
@@ -199,10 +201,10 @@ function MAIN()
     then
         echo "starting skipfishScan"
         skipfishScan &
-        echo "starting webWords"
-        webWords &
         echo "starting niktoScan"
         niktoScan &
+        echo "starting webWords"
+        webWords 
         echo "starting webDiscover"
         webDiscover &
     fi
@@ -1050,7 +1052,8 @@ function webDiscover()
     /usr/share/wordlists/metasploit/joomla.txt \
     /usr/share/wordlists/metasploit/http_owa_common.txt \
     /usr/share/wfuzz/wordlist/general/admin-panels.txt \
-    "$RECONDIR"/tmp/mkrecon.txt
+    "$RECONDIR"/tmp/mkrecon.txt \
+    "$RECONDIR"/${TARGET}.webwords 
     do
         if [[ -f "$wordlist" ]]
         then

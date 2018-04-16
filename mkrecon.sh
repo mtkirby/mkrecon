@@ -1460,8 +1460,8 @@ function fuzzURLs()
         cat "$file" \
             |sed -e 's/bgcolor=#000000/bgcolor=#FFFFFF/g' \
             |sed -e 's/text=#FFFFFF/text=#000000/g' \
-            >> "$RECONDIR"/${TARGET}.wfuzz/${file}.1 2>&1
-            mv -f "$RECONDIR"/${TARGET}.wfuzz/${file}.1 "$RECONDIR"/${TARGET}.wfuzz/${file} 2>&1
+            >> ${file}.1 2>&1
+            mv -f ${file}.1 ${file} 2>&1
 
         ignore=$(cat "$file" \
             |egrep -E "\d*L" \

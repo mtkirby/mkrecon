@@ -211,8 +211,6 @@ function MAIN()
     
     if [[ -f "$RECONDIR"/${TARGET}.spider ]]
     then
-        echo "starting fuzzURLs"
-        fuzzURLs &
         echo "starting sqlmapScan"
         sqlmapScan &
         echo "starting cewlCrawl"
@@ -229,12 +227,14 @@ function MAIN()
     then
         echo "starting getHeaders"
         getHeaders &
-        echo "starting mechDumpURLs"
-        mechDumpURLs &
         echo "starting scanURLs"
         scanURLs &
         echo "starting davScanURLs"
         davScanURLs &
+        echo "starting mechDumpURLs"
+        mechDumpURLs 
+        echo "starting fuzzURLs"
+        fuzzURLs &
     fi
 
     if [[ -f "$RECONDIR"/tmp/${TARGET}.spider.raw ]]
@@ -550,7 +550,6 @@ function buildEnv()
     echo '.k5login' >> "$RECONDIR"/tmp/mkrecon.txt
     echo 'security.txt' >> "$RECONDIR"/tmp/mkrecon.txt
     echo 'dashboard' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'mutillidae' >> "$RECONDIR"/tmp/mkrecon.txt
     echo 'xvwa' >> "$RECONDIR"/tmp/mkrecon.txt
     echo 'Labs' >> "$RECONDIR"/tmp/mkrecon.txt
     echo 'unsafebank' >> "$RECONDIR"/tmp/mkrecon.txt
@@ -1040,12 +1039,6 @@ function webDiscover()
 
 
     # Build dirb dictionary array
-    #for wordlist in /usr/share/dirb/wordlists/vulns/apache.txt \
-    #/usr/share/dirb/wordlists/vulns/sap.txt \
-    #/usr/share/dirb/wordlists/vulns/tomcat.txt \
-    #/usr/share/wfuzz/wordlist/general/admin-panels.txt \
-    #"$RECONDIR"/tmp/mkrecon.txt
-    #do
     for wordlist in /usr/share/dirb/wordlists/common.txt \
     /usr/share/dirb/wordlists/vulns/*txt \
     /usr/share/wordlists/metasploit/sap_icm_paths.txt \
@@ -1358,53 +1351,133 @@ function cewlCrawl()
 ################################################################################
 function fuzzURLs()
 {
-    local wfuzzfile
-    local url
+    local a_vars=()
     local file
-    local ignore
     local filename
+    local ignore
+    local line
+    local method
+    local url
+    local var
+    local varstring
+    local wfuzzfile
+    local IFS=$'\n'
 
     mkdir -p "$RECONDIR"/${TARGET}.wfuzz/raws >/dev/null 2>&1
-    grep '?' "$RECONDIR"/${TARGET}.spider \
+    for url in $( egrep '?.*=' "$RECONDIR"/${TARGET}.spider \
         |egrep -v '/\?' \
         |sed -e 's/\(\?[^=]*\)=[^&]*/\1=FUZZ/g' \
         |sed -e 's/\(\&[^=]*\)=[^&]*/\1=FUZZ/g' \
-        |sed -e 's/\?$/\?FUZZ/'|sort -u 2>/dev/null \
-        > "$RECONDIR"/tmp/${TARGET}.spider.FUZZ
-
-    for url in $(cat "$RECONDIR"/tmp/${TARGET}.spider.FUZZ 2>/dev/null)
+        |sed -e 's/\?$/\?FUZZ/' \
+        |sort -u 2>/dev/null 
+    )
     do
+        echo "none $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw
+    done
+
+
+    if [[ -f "$RECONDIR"/${TARGET}.mech-dump ]]
+    then
+        cat "$RECONDIR"/${TARGET}.mech-dump |while read line
+        do
+            if [[ $line =~ ^GET ]]
+            then
+                url=$(echo $line |awk '{print $2}')
+                a_vars=()
+                method=get
+                continue
+            fi
+        
+            if [[ $line =~ ^POST ]]
+            then
+                url=$(echo $line |awk '{print $2}')
+                a_vars=()
+                method=post
+                continue
+            fi
+        
+            if [[ $line =~ = ]] \
+            && [[ ! $line =~ NONAME ]] \
+            && [[ ! $line =~ (submit) ]] \
+            && [[ $url =~ http ]]
+            then
+                var=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ
+                a_vars[${#a_vars[@]}]=$var
+                continue
+            fi
+        
+            if [[ $url =~ http ]] \
+            && [[ x${line}x == "xx" || $line =~ ^# ]] 
+            then
+                varstring=$(joinBy \& ${a_vars[@]})
+                if [[ $method == "get" ]]
+                then
+                    echo "none $url?$varstring" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw
+                fi
+                if [[ $method == "post" ]]
+                then
+                    echo "$varstring $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw
+                fi
+                a_vars=()
+            fi
+        done
+    fi
+
+    sort -u "$RECONDIR"/tmp/${TARGET}.FUZZ.raw |grep "$TARGET" > "$RECONDIR"/tmp/${TARGET}.FUZZ
+
+    IFS=$'\n'
+    for line in $(cat "$RECONDIR"/tmp/${TARGET}.FUZZ 2>/dev/null)
+    do
+        IFS=' '
+        post=$(echo $line|awk '{print $1}')
+        url=$(echo $line|awk '{print $2}')
+        #url=${url//\&/\\&}
         wfuzzfile=${url//\//,}
-        $TIMEOUT 90 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/sql_inj.txt "$url" \
+        wfuzzfile=${wfuzzfile// /,}
+        wfuzzfile=${wfuzzfile//-/_}
+        wfuzzfile=${wfuzzfile//\"/}
+        wfuzzfile=${wfuzzfile//\&/_}
+
+        if [[ $post != "none" ]]
+        then
+            post="-d \"$post\""
+        else
+            post=''
+        fi
+        $TIMEOUT 300 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/sql_inj.txt $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.sql.wfuzz.raw.html 2>&1
-        $TIMEOUT 90 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt "$url" \
+        $TIMEOUT 300 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtnix.wfuzz.raw.html 2>&1
-        $TIMEOUT 90 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt "$url" \
+        $TIMEOUT 300 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.raw.html 2>&1
         # sometimes timeout command forks badly on exit
         pkill -t $TTY -f wfuzz
+    done
 
-        for file in "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.*.wfuzz.raw.html
-        do
-            ignore=$(cat "$file" \
-                |egrep -E "\d*L" \
-                |sed -e 's/.*[^0-9]\([0-9]*L\).*[^0-9]\([0-9]*W\).*/\1 \2/'\
-                |sort \
-                |uniq -c \
-                |sort -k1 -n \
-                |tail -1 \
-                |awk '{print $2".*"$3}')
+    for file in "$RECONDIR"/${TARGET}.wfuzz/raws/*.wfuzz.raw.html
+    do
+        # change dark theme to light theme
+        cat "$file" \
+            |sed -e 's/bgcolor=#000000/bgcolor=#FFFFFF/g' \
+            |sed -e 's/text=#FFFFFF/text=#000000/g' \
+            >> "$RECONDIR"/${TARGET}.wfuzz/${file}.1 2>&1
+            mv -f "$RECONDIR"/${TARGET}.wfuzz/${file}.1 "$RECONDIR"/${TARGET}.wfuzz/${file} 2>&1
 
-            bgcolor=#FFFFFF text=#000000
-            filename=${file##*/}
-            cat $file \
-                |egrep -v "$ignore" \
-                |sed -e 's/bgcolor=#000000/bgcolor=#FFFFFF/g' \
-                |sed -e 's/text=#FFFFFF/text=#000000/g' \
-                >> "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html 2>&1
-            egrep -q "00aa00" "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html \
-                || rm -f "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html
-        done
+        ignore=$(cat "$file" \
+            |egrep -E "\d*L" \
+            |sed -e 's/.*[^0-9]\([0-9]*L\).*[^0-9]\([0-9]*W\).*/\1 \2/'\
+            |sort \
+            |uniq -c \
+            |sort -k1 -n \
+            |tail -1 \
+            |awk '{print $2".*"$3}')
+
+        filename=${file##*/}
+        cat "$file" \
+            |egrep -v "$ignore" \
+            >> "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html 2>&1
+        egrep -q "00aa00" "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html \
+            || rm -f "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html
     done
 
     return 0
@@ -1451,11 +1524,17 @@ function davScanURLs()
         |sort -u )
     do
         # try multiple DAV scans.  None of these are 100% reliable, so try several.
+        echo "##################################################" >> "$RECONDIR"/${TARGET}.davtest 
+        echo "TESTING $url" >> "$RECONDIR"/${TARGET}.davtest 
         $TIMEOUT 90 davtest -cleanup -url "$url" 2>&1|grep SUCCEED >> "$RECONDIR"/${TARGET}.davtest
+        echo "##################################################" >> "$RECONDIR"/${TARGET}.davtest 
 
+        echo "##################################################" >> "$RECONDIR"/${TARGET}.cadaver 
+        echo "TESTING $url" >> "$RECONDIR"/${TARGET}.cadaver 
         echo ls | $TIMEOUT 10 cadaver "$url" 2>&1 \
             |egrep -v 'command can only be used when connected to the server.|^Try running|^Could not access|^405 Method|^Connection to' \
             >> "$RECONDIR"/${TARGET}.cadaver
+        echo "##################################################" >> "$RECONDIR"/${TARGET}.cadaver 
 
         port=$(getPortFromUrl "$url")
         output=$($TIMEOUT 90 nmap -p $port -Pn \
@@ -1464,7 +1543,10 @@ function davScanURLs()
             ${TARGET} 2>&1 )
         if echo $output |grep -q http-webdav-scan:
         then
+            echo "##################################################" >> "$RECONDIR"/${TARGET}.nmap-webdav 
+            echo "TESTING $url" >> "$RECONDIR"/${TARGET}.nmap-webdav
             echo "$output" >>"$RECONDIR"/${TARGET}.nmap-webdav
+            echo "##################################################" >> "$RECONDIR"/${TARGET}.nmap-webdav 
         fi
     done
     grep -q SUCCEED "$RECONDIR"/${TARGET}.davtest 2>/dev/null \

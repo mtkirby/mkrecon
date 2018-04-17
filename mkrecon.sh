@@ -30,12 +30,19 @@ function MAIN()
     cd "$RECONDIR" || exit 1
     
     echo "starting openvasScan"
+    echo "... outputs $RECONDIR/${TARGET}.openvas.csv"
+    echo "... outputs $RECONDIR/${TARGET}.openvas.html"
+    echo "... outputs $RECONDIR/${TARGET}.openvas.txt"
     openvasScan &
 
     echo "starting snmpScan"
+    echo "... outputs $RECONDIR/${TARGET}.snmp-check and deletes if none found"
     snmpScan &
     
     echo "starting nmapScan"
+    echo "... outputs $RECONDIR/${TARGET}.nmap"
+    echo "... outputs $RECONDIR/${TARGET}.ngrep"
+    echo "... outputs $RECONDIR/${TARGET}.xml"
     nmapScan
     if ! grep -q 'Ports: ' "$RECONDIR"/${TARGET}.ngrep 2>/dev/null
     then
@@ -43,17 +50,26 @@ function MAIN()
         exit 1
     fi
     echo "starting ncrackScan"
+    echo "... outputs $RECONDIR/${TARGET}.ncrack"
     ncrackScan &
     
+    echo "starting searchsploit"
+    echo "... outputs $RECONDIR/${TARGET}.searchsploit"
     searchsploit --colour --nmap "$RECONDIR"/${TARGET}.xml >> "$RECONDIR"/${TARGET}.searchsploit 2>&1 &
     
     echo "starting basicEyeWitness"
+    echo "... outputs $RECONDIR/${TARGET}.basicEyeWitness"
     basicEyeWitness &
     
     echo "starting otherNmaps"
+    echo "... outputs $RECONDIR/${TARGET}.nmap-auth"
+    echo "... outputs $RECONDIR/${TARGET}.nmap-exploitvuln"
+    echo "... outputs $RECONDIR/${TARGET}.nmap-discoverysafe"
     otherNmaps &
     
     echo "examining open ports"
+    echo "... outputs $RECONDIR/${TARGET}.baseurls"
+    echo "... outputs $RECONDIR/${TARGET}.port.certificate"
     for rawport in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
     do  
         if ! echo $rawport |egrep -q '[[:digit:]]+/open/'
@@ -107,6 +123,7 @@ function MAIN()
         if echo $rawport |egrep -q '^514/open'
         then
             echo "starting rshBrute"
+            echo "... outputs $RECONDIR/${TARGET}.rsh"
             rshBrute &
         fi
     
@@ -115,6 +132,9 @@ function MAIN()
         || echo $rawport |egrep -q '/open/tcp//nfs'
         then
             echo "starting nfsScan"
+            echo "... outputs $RECONDIR/${TARGET}.showmount-e if anything found"
+            echo "... outputs $RECONDIR/${TARGET}.showmount-a if anything found"
+            echo "... outputs $RECONDIR/${TARGET}.nfsls if anything found"
             nfsScan &
         fi
     
@@ -122,6 +142,17 @@ function MAIN()
         if echo $rawport |egrep -q '53/open/.*//domain'
         then
             echo "starting dnsScan"
+            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr"
+            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.192.168"
+            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.172.16"
+            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.10.0"
+            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.10.64"
+            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.10.128"
+            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.10.192"
+            echo "... outputs $RECONDIR/${TARGET}.dnsenum"
+            echo "... outputs $RECONDIR/${TARGET}.dnsrecon"
+            echo "... outputs $RECONDIR/${TARGET}.host-a"
+            echo "... outputs $RECONDIR/${TARGET}.host-l"
             dnsScan &
         fi
     
@@ -129,6 +160,7 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/udp//isakmp'
         then
             echo "starting ikeScan"
+            echo "... outputs $RECONDIR/${TARGET}.${port}.ike-scan"
             ikeScan $port &
         fi
     
@@ -136,6 +168,8 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//rsync'
         then
             echo "starting rsyncScan"
+            echo "... outputs $RECONDIR/${TARGET}.${port}.rsync"
+            echo "... outputs $RECONDIR/${TARGET}.${port}.rsync-\$share"
             rsyncScan $port &
         fi
     
@@ -144,6 +178,9 @@ function MAIN()
         || echo $rawport |egrep -q '445/open/tcp//netbios-ssn'
         then
             echo "starting smbScan"
+            echo "... outputs $RECONDIR/${TARGET}.smbshares"
+            echo "... outputs $RECONDIR/${TARGET}.smbdirs"
+            echo "... outputs $RECONDIR/${TARGET}.rpcclient"
             smbScan &
         fi
     
@@ -151,6 +188,7 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//redis/'
         then
             echo "starting redisScan"
+            echo "... outputs $RECONDIR/${TARGET}.redis.${port}"
             redisScan $port &
         fi
     
@@ -158,6 +196,7 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//ldap/'
         then
             echo "starting ldapScan"
+            echo "... outputs $RECONDIR/${TARGET}.ldap.${port}"
             ldapScan $port
         fi
 
@@ -165,6 +204,8 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//http//Elasticsearch'
         then
             echo "starting elasticsearchScan"
+            echo "... outputs $RECONDIR/${TARGET}.elasticsearch.indexes.${port}"
+            echo "... outputs $RECONDIR/${TARGET}.elasticsearch.indexes.${port}.\$index"
             elasticsearchScan $port $proto &
         fi
     
@@ -172,6 +213,7 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//iscsi'
         then
             echo "starting iscsiScan"
+            echo "... outputs $RECONDIR/${TARGET}.iscsiadm.${port}"
             iscsiScan $port
         fi
     
@@ -179,12 +221,20 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//.*//Docker'
         then
             echo "starting dockerScan"
+            echo "... outputs $RECONDIR/${TARGET}.dockerinfo.${port}"
+            echo "... outputs $RECONDIR/${TARGET}.dockernetworks.${port}"
+            echo "... outputs $RECONDIR/${TARGET}.dockercontainers.${port}"
+            echo "... outputs $RECONDIR/dockertop.${port}.${id}"
+            echo "... outputs $RECONDIR/dockerchanges.${port}.${id}"
+            echo "... outputs $RECONDIR/dockershadow.${port}.${id}"
+            echo "... outputs $RECONDIR/${TARGET}.dockerepo.${port}"
             dockerScan $port $proto 
         fi
         # postgres
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//postgresql'
         then
             echo "starting postgresqlScan"
+            echo "... outputs $RECONDIR/${TARGET}.postgresql.$port"
             postgresqlScan $port &
         fi
 
@@ -192,6 +242,7 @@ function MAIN()
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//mysql'
         then
             echo "starting mysqlScan"
+            echo "... outputs $RECONDIR/${TARGET}.mysql.$port"
             mysqlScan $port &
         fi
     
@@ -200,46 +251,81 @@ function MAIN()
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
         echo "starting skipfishScan"
+        echo "... outputs $RECONDIR/${TARGET}.skipfish/"
         skipfishScan &
+
         echo "starting niktoScan"
+        echo "... outputs $RECONDIR/${urlfile}.nikto"
         niktoScan &
+
         echo "starting webWords"
+        echo "... outputs $RECONDIR/${TARGET}.webwords"
         webWords 
+
         echo "starting webDiscover"
+        echo "... outputs $RECONDIR/${TARGET}.robots.txt"
+        echo "... outputs $RECONDIR/${TARGET}.robotspider.html"
+        echo "... outputs $RECONDIR/${TARGET}.dirburls"
+        echo "... outputs $RECONDIR/${TARGET}.dirburls.401"
+        echo "... outputs $RECONDIR/${TARGET}.spider"
+        echo "... outputs $RECONDIR/${TARGET}.spider.html"
+        echo "... outputs $RECONDIR/${TARGET}.urls"
+        echo "... outputs $RECONDIR/${TARGET}.urls.html"
         webDiscover 
     fi
     
     if [[ -f "$RECONDIR"/${TARGET}.spider ]]
     then
         echo "starting sqlmapScan"
+        echo "... outputs $RECONDIR/${TARGET}.sqlmap"
         sqlmapScan &
+
         echo "starting cewlCrawl"
+        echo "... outputs $RECONDIR/${TARGET}.cewl"
+        echo "... outputs $RECONDIR/${TARGET}.cewlemail"
+        echo "... outputs $RECONDIR/${TARGET}.cewlmeta"
         cewlCrawl &
     fi
     
     if [[ -f "$RECONDIR"/${TARGET}.dirburls.401 ]]
     then
         echo "starting hydraScanURLs"
+        echo "... outputs $RECONDIR/${TARGET}.hydra if anything found"
         hydraScanURLs &
     fi
     
     if [[ -f "$RECONDIR"/${TARGET}.urls ]]
     then
         echo "starting getHeaders"
+        echo "... outputs $RECONDIR/${TARGET}.headers"
         getHeaders &
+
         echo "starting scanURLs"
+        echo "... outputs $RECONDIR/${TARGET}.whatweb"
+        echo "... outputs $RECONDIR/${TARGET}.wpscan if anything found"
+        echo "... outputs $RECONDIR/${TARGET}.joomscan if anything found"
+        echo "... outputs $RECONDIR/${TARGET}.fimap if anything found"
         scanURLs &
+
         echo "starting davScanURLs"
+        echo "... outputs $RECONDIR/${TARGET}.davtest if anything found"
+        echo "... outputs $RECONDIR/${TARGET}.cadaver if anything found"
+        echo "... outputs $RECONDIR/${TARGET}.nmap-webdav if anything found"
         davScanURLs &
+
         echo "starting mechDumpURLs"
+        echo "... outputs $RECONDIR/${TARGET}.mech-dump"
         mechDumpURLs 
+
         echo "starting fuzzURLs"
+        echo "... outputs $RECONDIR/${TARGET}.wfuzz"
         fuzzURLs &
     fi
 
     if [[ -f "$RECONDIR"/tmp/${TARGET}.spider.raw ]]
     then
         echo "starting exifScanURLs"
+        echo "... outputs $RECONDIR/${TARGET}.exif.html if anything found"
         exifScanURLs &
     fi
     
@@ -941,28 +1027,28 @@ function dockerScan()
     local id
 
     $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:$port/info 2>/dev/null|jq -M . \
-        >> "$RECONDIR"/${TARGET}.dockerinfo 2>&1
+        >> "$RECONDIR"/${TARGET}.dockerinfo.${port} 2>&1
 
     $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:$port/networks 2>/dev/null|jq -M . \
-        >> "$RECONDIR"/${TARGET}.dockernetworks 2>&1
+        >> "$RECONDIR"/${TARGET}.dockernetworks.${port} 2>&1
 
     $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:$port/containers/json 2>/dev/null|jq -M . \
-        >> "$RECONDIR"/${TARGET}.dockercontainers 2>&1
+        >> "$RECONDIR"/${TARGET}.dockercontainers.${port} 2>&1
 
-    for id in $(grep '"Id": ' "$RECONDIR"/${TARGET}.dockercontainers |cut -d'"' -f4)
+    for id in $(grep '"Id": ' "$RECONDIR"/${TARGET}.dockercontainers.${port} |cut -d'"' -f4)
     do
         $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/top 2>/dev/null|jq -M . \
-            >> "$RECONDIR"/dockertop.${id}
+            >> "$RECONDIR"/dockertop.${port}.${id}
         $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/changes 2>/dev/null|jq -M . \
-            >> "$RECONDIR"/dockerchanges.${id}
+            >> "$RECONDIR"/dockerchanges.${port}.${id}
         $TIMEOUT 60 curl -k -s "${proto}://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
             2>/dev/null|tar xf - -O \
-            >> "$RECONDIR"/dockershadow.${id} 2>/dev/null
+            >> "$RECONDIR"/dockershadow.${port}.${id} 2>/dev/null
 
     done
 
     $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:${port}/v2/_catalog 2>/dev/null|jq -M . \
-        >> "$RECONDIR"/${TARGET}.${port}.dockerepo 2>&1
+        >> "$RECONDIR"/${TARGET}.dockerepo.${port} 2>&1
 
     return 0
 }
@@ -974,7 +1060,7 @@ function iscsiScan()
     local port=$1
 
     $TIMEOUT 90 iscsiadm -m discovery -t st -p ${TARGET}:${port} \
-        >> "$RECONDIR"/${TARGET}.iscsiadm 2>&1
+        >> "$RECONDIR"/${TARGET}.iscsiadm.${port} 2>&1
 
     return 0
 }
@@ -1021,7 +1107,7 @@ function ldapScan()
     local port=$1
 
     $TIMEOUT 90 ldapsearch -h $TARGET -p $port -x -s base \
-        >> "$RECONDIR"/${TARGET}.ldap 2>&1
+        >> "$RECONDIR"/${TARGET}.ldap.${port} 2>&1
 
     return 0
 }

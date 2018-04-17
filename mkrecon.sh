@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180414 Kirby
+# 20180417 Kirby
 
 
 umask 077
@@ -445,11 +445,17 @@ function buildEnv()
         echo "cisco" >> "$RECONDIR"/tmp/users.tmp
         echo "clamav" >> "$RECONDIR"/tmp/users.tmp
         echo "control" >> "$RECONDIR"/tmp/users.tmp
+        echo "consul" >> "$RECONDIR"/tmp/users.tmp
         echo "data" >> "$RECONDIR"/tmp/users.tmp
         echo "database" >> "$RECONDIR"/tmp/users.tmp
         echo "dovecot" >> "$RECONDIR"/tmp/users.tmp
         echo "elasticsearch" >> "$RECONDIR"/tmp/users.tmp
         echo "ftp" >> "$RECONDIR"/tmp/users.tmp
+        echo "git" >> "$RECONDIR"/tmp/users.tmp
+        echo "git2consul" >> "$RECONDIR"/tmp/users.tmp
+        echo "gitlab" >> "$RECONDIR"/tmp/users.tmp
+        echo "gitlab-redis" >> "$RECONDIR"/tmp/users.tmp
+        echo "gitlab-psql" >> "$RECONDIR"/tmp/users.tmp
         echo "guest" >> "$RECONDIR"/tmp/users.tmp
         echo "hadoop" >> "$RECONDIR"/tmp/users.tmp
         echo "haproxy" >> "$RECONDIR"/tmp/users.tmp

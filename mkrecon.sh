@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180417 Kirby
+# 20180419 Kirby
 
 
 umask 077
@@ -92,18 +92,14 @@ function MAIN()
 
         # sometimes nmap can't identify a web service, so just try anyways
         if $TIMEOUT 60 wget --tries=1 -O /dev/null --no-check-certificate -S  -D $TARGET \
-            --method=HEAD http://${TARGET}:${port} 2>&1 \
-            |egrep -qi 'HTTP/|X-|Content|Date' \
-        && ! grep -q "http://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls \
-            >/dev/null 2>&1
+            --method=HEAD http://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
+        && ! grep -q "http://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
         then
             echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
         fi
         if $TIMEOUT 60 wget --tries=1 -O /dev/null --no-check-certificate -S  -D $TARGET \
-            --method=HEAD https://${TARGET}:${port} 2>&1 \
-            |egrep -qi 'HTTP/|X-|Content|Date' \
-        && ! grep -q "https://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls \
-            >/dev/null 2>&1
+            --method=HEAD https://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
+        && ! grep -q "https://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
         then
             echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
         fi
@@ -159,7 +155,7 @@ function MAIN()
         # ike
         if echo $rawport |egrep -q '[[:digit:]]+/open/udp//isakmp'
         then
-            echo "starting ikeScan"
+            echo "starting ikeScan for port $port"
             echo "... outputs $RECONDIR/${TARGET}.${port}.ike-scan"
             ikeScan $port &
         fi
@@ -167,7 +163,7 @@ function MAIN()
         # rsync
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//rsync'
         then
-            echo "starting rsyncScan"
+            echo "starting rsyncScan for port $port"
             echo "... outputs $RECONDIR/${TARGET}.${port}.rsync"
             echo "... outputs $RECONDIR/${TARGET}.${port}.rsync-\$share"
             rsyncScan $port &
@@ -187,7 +183,7 @@ function MAIN()
         # redis
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//redis/'
         then
-            echo "starting redisScan"
+            echo "starting redisScan for port $port"
             echo "... outputs $RECONDIR/${TARGET}.redis.${port}"
             redisScan $port &
         fi
@@ -195,7 +191,7 @@ function MAIN()
         # ldap
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//ldap/'
         then
-            echo "starting ldapScan"
+            echo "starting ldapScan for port $port"
             echo "... outputs $RECONDIR/${TARGET}.ldap.${port}"
             ldapScan $port
         fi
@@ -203,7 +199,7 @@ function MAIN()
         # elasticsearch
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//http//Elasticsearch'
         then
-            echo "starting elasticsearchScan"
+            echo "starting elasticsearchScan for port $port"
             echo "... outputs $RECONDIR/${TARGET}.elasticsearch.indexes.${port}"
             echo "... outputs $RECONDIR/${TARGET}.elasticsearch.indexes.${port}.\$index"
             elasticsearchScan $port $proto &
@@ -212,7 +208,7 @@ function MAIN()
         # iscsi
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//iscsi'
         then
-            echo "starting iscsiScan"
+            echo "starting iscsiScan for port $port"
             echo "... outputs $RECONDIR/${TARGET}.iscsiadm.${port}"
             iscsiScan $port
         fi
@@ -220,7 +216,7 @@ function MAIN()
         # docker
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//.*//Docker'
         then
-            echo "starting dockerScan"
+            echo "starting dockerScan for port $port"
             echo "... outputs $RECONDIR/${TARGET}.dockerinfo.${port}"
             echo "... outputs $RECONDIR/${TARGET}.dockernetworks.${port}"
             echo "... outputs $RECONDIR/${TARGET}.dockercontainers.${port}"
@@ -233,7 +229,7 @@ function MAIN()
         # postgres
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//postgresql'
         then
-            echo "starting postgresqlScan"
+            echo "starting postgresqlScan for port $port"
             echo "... outputs $RECONDIR/${TARGET}.postgresql.$port"
             postgresqlScan $port &
         fi
@@ -241,7 +237,7 @@ function MAIN()
         # mysql
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//mysql'
         then
-            echo "starting mysqlScan"
+            echo "starting mysqlScan for port $port"
             echo "... outputs $RECONDIR/${TARGET}.mysql.$port"
             mysqlScan $port &
         fi
@@ -255,7 +251,7 @@ function MAIN()
         skipfishScan &
 
         echo "starting niktoScan"
-        echo "... outputs $RECONDIR/${urlfile}.nikto"
+        echo "... outputs $RECONDIR/${TARGET}:\$port.nikto"
         niktoScan &
 
         echo "starting webWords"
@@ -469,22 +465,24 @@ function buildEnv()
     || [[ ! -f "$RECONDIR"/tmp/passwds.lst ]]
     then
         rm -f "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp >/dev/null 2>&1
+
         awk '{print $1}' /usr/share/wordlists/metasploit/sap_default.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        awk '{print $2}' /usr/share/wordlists/metasploit/sap_default.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
         cat /usr/share/wordlists/metasploit/idrac_default_pass.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/http_default_pass.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
         cat /usr/share/wordlists/metasploit/http_default_users.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
         cat /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
         cat /usr/share/seclists/Usernames/top_shortlist.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
+
+        awk '{print $2}' /usr/share/wordlists/metasploit/sap_default.txt 2>/dev/null \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/wordlists/metasploit/http_default_pass.txt 2>/dev/null \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt 2>/dev/null \
+            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
         cat /usr/share/seclists/Passwords/wordpress_attacks_july2014.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
         cat /usr/share/seclists/Passwords/rockyou-5.txt 2>/dev/null \
@@ -508,6 +506,7 @@ function buildEnv()
         cat /usr/share/seclists/Passwords/rockyou-10.txt 2>/dev/null \
             >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
 
+        # add extra users
         echo "Demo" >> "$RECONDIR"/tmp/users.tmp
         echo "demo" >> "$RECONDIR"/tmp/users.tmp
         echo "account" >> "$RECONDIR"/tmp/users.tmp
@@ -612,6 +611,7 @@ function buildEnv()
         echo "zabbix" >> "$RECONDIR"/tmp/users.tmp
         echo "zookeeper" >> "$RECONDIR"/tmp/users.tmp
 
+        # add extra passwords
         echo "adminadmin" >> "$RECONDIR"/tmp/passwds.tmp
         echo "calvin" >> "$RECONDIR"/tmp/passwds.tmp
         echo "changethis" >> "$RECONDIR"/tmp/passwds.tmp
@@ -997,8 +997,32 @@ function smbScan()
 function mysqlScan()
 {
     local port=$1
+    local db
 
-    $TIMEOUT 60 mysql -E -u root -e 'show databases; select host,user,password from mysql.user;' --connect-timeout=30 -h $TARGET \
+    echo "show databases" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+    $TIMEOUT 60 mysql -E -u root -e 'show databases;' --connect-timeout=30 -h $TARGET \
+        >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+
+
+    for db in $(cat "$RECONDIR"/${TARGET}.mysql.$port |awk '/^Database:/ {print $2}')
+    do
+        echo "##################################################" \
+            >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+        echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+        $TIMEOUT 60 mysql -E -u root -D "$db" -e 'show tables;' --connect-timeout=30 -h $TARGET \
+            |grep -v 'row *' >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+    done
+
+    echo "##################################################" \
+        >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+    echo "show full processlist;" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+    $TIMEOUT 60 mysql -E -u root -e 'show full processlist;' --connect-timeout=30 -h $TARGET \
+        >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+
+    echo "##################################################" \
+        >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+    echo "select host,user,password from mysql.user;" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+    $TIMEOUT 60 mysql -E -u root -e 'select host,user,password from mysql.user;' --connect-timeout=30 -h $TARGET \
         >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
 
     return 0
@@ -1009,8 +1033,26 @@ function mysqlScan()
 function postgresqlScan()
 {
     local port=$1
+    local db
 
-    $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -l \
+    $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -l -x \
+        >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+
+    for db in $(cat "$RECONDIR"/${TARGET}.postgresql.$port |awk '/^Name/ {print $3}')
+    do
+        echo "##################################################" \
+            >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+        echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+        $TIMEOUT 60 psql -c 'SELECT * FROM pg_catalog.pg_tables;' -d $db \
+            >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+    done
+
+    echo "################################################## select * from pg_stat_activity" \
+        >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+    $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -x -c 'select * from pg_stat_activity;' \
+        >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+
+    echo "################################################## select * from pg_catalog.pg_shadow" \
         >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
     $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -x -c 'select * from pg_catalog.pg_shadow;' \
         >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
@@ -1454,6 +1496,7 @@ function fuzzURLs()
     local varstring
     local wfuzzfile
     local IFS=$'\n'
+    local i=0
 
     mkdir -p "$RECONDIR"/${TARGET}.wfuzz/raws >/dev/null 2>&1
     for url in $( egrep '?.*=' "$RECONDIR"/${TARGET}.spider \
@@ -1524,11 +1567,11 @@ function fuzzURLs()
         post=$(echo $line|awk '{print $1}')
         url=$(echo $line|awk '{print $2}')
         #url=${url//\&/\\&}
-        wfuzzfile=${url//\//,}
-        wfuzzfile=${wfuzzfile// /,}
-        wfuzzfile=${wfuzzfile//-/_}
-        wfuzzfile=${wfuzzfile//\"/}
-        wfuzzfile=${wfuzzfile//\&/_}
+        wfuzzfile=$(echo ${url//\//,} |cut -d',' -f1-4)
+        #wfuzzfile=${wfuzzfile// /,}
+        #wfuzzfile=${wfuzzfile//-/_}
+        #wfuzzfile=${wfuzzfile//\"/}
+        #wfuzzfile=${wfuzzfile//\&/_}
 
         if [[ $post != "none" ]]
         then
@@ -1537,16 +1580,17 @@ function fuzzURLs()
             post=''
         fi
         $TIMEOUT 300 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/sql_inj.txt $post "$url" \
-            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.sql.wfuzz.raw.html 2>&1
+            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.sql.wfuzz.${i}.html 2>&1
         $TIMEOUT 300 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt $post "$url" \
-            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtnix.wfuzz.raw.html 2>&1
+            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtnix.wfuzz.${i}.html 2>&1
         $TIMEOUT 300 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt $post "$url" \
-            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.raw.html 2>&1
+            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.${i}.html 2>&1
         # sometimes timeout command forks badly on exit
         pkill -t $TTY -f wfuzz
+        let i++
     done
 
-    for file in "$RECONDIR"/${TARGET}.wfuzz/raws/*.wfuzz.raw.html
+    for file in "$RECONDIR"/${TARGET}.wfuzz/raws/*.wfuzz.*.html
     do
         # change dark theme to light theme
         cat "$file" \
@@ -1567,9 +1611,9 @@ function fuzzURLs()
         filename=${file##*/}
         cat "$file" \
             |egrep -v "$ignore" \
-            >> "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html 2>&1
-        egrep -q "00aa00" "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html \
-            || rm -f "$RECONDIR"/${TARGET}.wfuzz/${filename%%.raw.html}.html
+            >> "$RECONDIR"/${TARGET}.wfuzz/${filename%%.wfuzz.*.html}.wfuzz.html 2>&1
+        egrep -q "00aa00" "$RECONDIR"/${TARGET}.wfuzz/${filename%%.wfuzz.*.html}.wfuzz.html \
+            || rm -f "$RECONDIR"/${TARGET}.wfuzz/${filename%%.wfuzz.*.html}.wfuzz.html
     done
 
     return 0

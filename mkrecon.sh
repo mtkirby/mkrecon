@@ -1082,10 +1082,12 @@ function elasticsearchScan()
     local index
 
     $TIMEOUT 90 curl -k -s "${proto}://${TARGET}:${port}/_cat/indices?v" > "$RECONDIR"/${TARGET}.elasticsearch.${port} 2>&1
+    $TIMEOUT 90 curl -k -s "${proto}://${TARGET}:${port}/_all/_settings" 2>&1 |jq . > "$RECONDIR"/${TARGET}.elasticsearch.${port}._all_settings 
+
     mkdir "$RECONDIR"/${TARGET}.elasticsearch.indexes.${port}
-    for index in $(awk '{print $3}' "$RECONDIR"/${TARGET}.elasticsearch.${port} |egrep -v "^index$" )
+    for index in $(awk '{print $2}' "$RECONDIR"/${TARGET}.elasticsearch.${port} |egrep -v "^index$" )
     do
-        $TIMEOUT 60 curl -k -s "${proto}://${TARGET}:${port}/${index}/" 2>/dev/null |jq . \
+        $TIMEOUT 60 curl -k -s "${proto}://${TARGET}:${port}/${index}/_stats" 2>/dev/null |jq . \
             > "$RECONDIR"/${TARGET}.elasticsearch.indexes.${port}/$index 2>&1
     done
 
@@ -1368,12 +1370,14 @@ function hydraScanURLs()
         path=/${url#*//*/}
         hydrafile=${url//\//,}.hydra
         mkdir -p "$RECONDIR"/${TARGET}.hydra >/dev/null 2>&1
-        $TIMEOUT 600 hydra -I -L "$RECONDIR"/tmp/users.lst \
+        echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
+        echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
+        $TIMEOUT 900 hydra -I -L "$RECONDIR"/tmp/users.lst \
             -P "$RECONDIR"/tmp/passwds.lst -e nsr \
             -u -f -t 5 $sslflag -s $port $TARGET http-get "$path" \
             >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
         grep -q 'valid pair found' "$RECONDIR"/${TARGET}.hydra/${hydrafile} \
-            || rm -f "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>/dev/null
+            && cp -f "$RECONDIR"/${TARGET}.hydra/${hydrafile} "$RECONDIR"/${TARGET}.${hydrafile} 2>/dev/null
     done
     #remove directory if empty
     rmdir "$RECONDIR"/${TARGET}.hydra >/dev/null 2>&1

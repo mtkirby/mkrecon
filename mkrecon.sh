@@ -416,9 +416,9 @@ function MAIN()
         fi
     done
 
-    echo "starting maybeDefCreds"
-    echo "... outputs $RECONDIR/${TARGET}.maybeDefCreds"
-    maybeDefCreds
+    echo "starting defaultCreds"
+    echo "... outputs $RECONDIR/${TARGET}.defaultCreds"
+    defaultCreds
     
     if screen -ls |grep -q ".${TARGET}."
     then
@@ -528,110 +528,6 @@ function buildEnv()
             /usr/share/wordlists/metasploit/idrac_default_pass.txt \
             >> "$RECONDIR"/tmp/passwds.tmp
 
-        # add extra users
-        echo "demo" >> "$RECONDIR"/tmp/users.tmp
-        echo "account" >> "$RECONDIR"/tmp/users.tmp
-        echo "activemq" >> "$RECONDIR"/tmp/users.tmp
-        echo "adm" >> "$RECONDIR"/tmp/users.tmp
-        echo "admin" >> "$RECONDIR"/tmp/users.tmp
-        echo "ansible" >> "$RECONDIR"/tmp/users.tmp
-        echo "apache" >> "$RECONDIR"/tmp/users.tmp
-        echo "apache2" >> "$RECONDIR"/tmp/users.tmp
-        echo "app" >> "$RECONDIR"/tmp/users.tmp
-        echo "appserver" >> "$RECONDIR"/tmp/users.tmp
-        echo "asterisk" >> "$RECONDIR"/tmp/users.tmp
-        echo "backup" >> "$RECONDIR"/tmp/users.tmp
-        echo "cacti" >> "$RECONDIR"/tmp/users.tmp
-        echo "cassandra" >> "$RECONDIR"/tmp/users.tmp
-        echo "centos" >> "$RECONDIR"/tmp/users.tmp
-        echo "ceph" >> "$RECONDIR"/tmp/users.tmp
-        echo "ceph-admin" >> "$RECONDIR"/tmp/users.tmp
-        echo "chef" >> "$RECONDIR"/tmp/users.tmp
-        echo "chef_server" >> "$RECONDIR"/tmp/users.tmp
-        echo "cisco" >> "$RECONDIR"/tmp/users.tmp
-        echo "clamav" >> "$RECONDIR"/tmp/users.tmp
-        echo "control" >> "$RECONDIR"/tmp/users.tmp
-        echo "consul" >> "$RECONDIR"/tmp/users.tmp
-        echo "data" >> "$RECONDIR"/tmp/users.tmp
-        echo "database" >> "$RECONDIR"/tmp/users.tmp
-        echo "dovecot" >> "$RECONDIR"/tmp/users.tmp
-        echo "elasticsearch" >> "$RECONDIR"/tmp/users.tmp
-        echo "ftp" >> "$RECONDIR"/tmp/users.tmp
-        echo "git" >> "$RECONDIR"/tmp/users.tmp
-        echo "git2consul" >> "$RECONDIR"/tmp/users.tmp
-        echo "gitlab" >> "$RECONDIR"/tmp/users.tmp
-        echo "gitlab-redis" >> "$RECONDIR"/tmp/users.tmp
-        echo "gitlab-psql" >> "$RECONDIR"/tmp/users.tmp
-        echo "guest" >> "$RECONDIR"/tmp/users.tmp
-        echo "hadoop" >> "$RECONDIR"/tmp/users.tmp
-        echo "haproxy" >> "$RECONDIR"/tmp/users.tmp
-        echo "hbase" >> "$RECONDIR"/tmp/users.tmp
-        echo "jboss" >> "$RECONDIR"/tmp/users.tmp
-        echo "jenkins" >> "$RECONDIR"/tmp/users.tmp
-        echo "jira" >> "$RECONDIR"/tmp/users.tmp
-        echo "joomla" >> "$RECONDIR"/tmp/users.tmp
-        echo "kafka" >> "$RECONDIR"/tmp/users.tmp
-        echo "kibana" >> "$RECONDIR"/tmp/users.tmp
-        echo "linux" >> "$RECONDIR"/tmp/users.tmp
-        echo "logstash" >> "$RECONDIR"/tmp/users.tmp
-        echo "manager" >> "$RECONDIR"/tmp/users.tmp
-        echo "master" >> "$RECONDIR"/tmp/users.tmp
-        echo "memcached" >> "$RECONDIR"/tmp/users.tmp
-        echo "mongod" >> "$RECONDIR"/tmp/users.tmp
-        echo "mongodb" >> "$RECONDIR"/tmp/users.tmp
-        echo "mysql" >> "$RECONDIR"/tmp/users.tmp
-        echo "nagios" >> "$RECONDIR"/tmp/users.tmp
-        echo "named" >> "$RECONDIR"/tmp/users.tmp
-        echo "nginx" >> "$RECONDIR"/tmp/users.tmp
-        echo "nobody" >> "$RECONDIR"/tmp/users.tmp
-        echo "nrpe" >> "$RECONDIR"/tmp/users.tmp
-        echo "operator" >> "$RECONDIR"/tmp/users.tmp
-        echo "oracle" >> "$RECONDIR"/tmp/users.tmp
-        echo "pi" >> "$RECONDIR"/tmp/users.tmp
-        echo "postgres" >> "$RECONDIR"/tmp/users.tmp
-        echo "project" >> "$RECONDIR"/tmp/users.tmp
-        echo "puppet" >> "$RECONDIR"/tmp/users.tmp
-        echo "rabbitmq" >> "$RECONDIR"/tmp/users.tmp
-        echo "redhat" >> "$RECONDIR"/tmp/users.tmp
-        echo "redis" >> "$RECONDIR"/tmp/users.tmp
-        echo "redmine" >> "$RECONDIR"/tmp/users.tmp
-        echo "root" >> "$RECONDIR"/tmp/users.tmp
-        echo "rundeck" >> "$RECONDIR"/tmp/users.tmp
-        echo "sales" >> "$RECONDIR"/tmp/users.tmp
-        echo "sapadm" >> "$RECONDIR"/tmp/users.tmp
-        echo "server" >> "$RECONDIR"/tmp/users.tmp
-        echo "share" >> "$RECONDIR"/tmp/users.tmp
-        echo "spark" >> "$RECONDIR"/tmp/users.tmp
-        echo "squid" >> "$RECONDIR"/tmp/users.tmp
-        echo "student" >> "$RECONDIR"/tmp/users.tmp
-        echo "superman" >> "$RECONDIR"/tmp/users.tmp
-        echo "support" >> "$RECONDIR"/tmp/users.tmp
-        echo "sysadm" >> "$RECONDIR"/tmp/users.tmp
-        echo "sysadmin" >> "$RECONDIR"/tmp/users.tmp
-        echo "sysop" >> "$RECONDIR"/tmp/users.tmp
-        echo "teamspeak" >> "$RECONDIR"/tmp/users.tmp
-        echo "teamspeak3" >> "$RECONDIR"/tmp/users.tmp
-        echo "tech" >> "$RECONDIR"/tmp/users.tmp
-        echo "test" >> "$RECONDIR"/tmp/users.tmp
-        echo "tomcat" >> "$RECONDIR"/tmp/users.tmp
-        echo "toor" >> "$RECONDIR"/tmp/users.tmp
-        echo "ubuntu" >> "$RECONDIR"/tmp/users.tmp
-        echo "unbound" >> "$RECONDIR"/tmp/users.tmp
-        echo "user" >> "$RECONDIR"/tmp/users.tmp
-        echo "user1" >> "$RECONDIR"/tmp/users.tmp
-        echo "vagrant" >> "$RECONDIR"/tmp/users.tmp
-        echo "vmware" >> "$RECONDIR"/tmp/users.tmp
-        echo "vnc" >> "$RECONDIR"/tmp/users.tmp
-        echo "web" >> "$RECONDIR"/tmp/users.tmp
-        echo "webadmin" >> "$RECONDIR"/tmp/users.tmp
-        echo "webapp" >> "$RECONDIR"/tmp/users.tmp
-        echo "weblogic" >> "$RECONDIR"/tmp/users.tmp
-        echo "wordpress" >> "$RECONDIR"/tmp/users.tmp
-        echo "www" >> "$RECONDIR"/tmp/users.tmp
-        echo "www-data" >> "$RECONDIR"/tmp/users.tmp
-        echo "zabbix" >> "$RECONDIR"/tmp/users.tmp
-        echo "zookeeper" >> "$RECONDIR"/tmp/users.tmp
-
         # add extra passwords
         echo "adminadmin" >> "$RECONDIR"/tmp/passwds.tmp
         echo "changethis" >> "$RECONDIR"/tmp/passwds.tmp
@@ -719,12 +615,12 @@ function openvasScan()
 
     if ! omp -u $ovusername -w $ovpassword -g >/dev/null 2>&1
     then
-        echo "$BANNER"
+        echo "$BORDER"
         echo "WARNING: UNABLE TO CONNECT TO OPENVAS"
         echo "If you need to install OpenVas, run apt-get install -y greenbone-security-assistant greenbone-security-assistant-common openvas openvas-cli openvas-manager openvas-manager-common openvas-scanner"
         echo "Then run openvas-check-setup and follow the instructions until it says everything is working."
         echo "Also change the username/password in the openvasScan function of this script."
-        echo "$BANNER"
+        echo "$BORDER"
         return 1
     fi
 
@@ -1863,7 +1759,7 @@ function scanURLs()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
         echo "CRACKING ADMIN FOR URL: $url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
         $TIMEOUT 900 wpscan -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
-            --username admin >> "$RECONDIR"/${TARGET}.wpscan 2>&1
+            --username admin --url "$url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1
     done
 
     # run joomscan on first found joomla
@@ -1928,12 +1824,12 @@ function ncrackScan()
 ################################################################################
 
 ################################################################################
-function maybeDefCreds()
+function defaultCreds()
 {
     local IFS=$'\n'
     local name
     local defpassfile='/usr/share/seclists/Passwords/Default-Credentials/default-passwords.csv'
-    local logfile="$RECONDIR/${TARGET}.maybeDefCreds"
+    local logfile="$RECONDIR/${TARGET}.defaultCreds"
 
     for name in $(cat $defpassfile \
         |dos2unix |cut -d',' -f1 |tr '[A-Z]' '[a-z]' |sed -e 's/"//g' |sort -u)

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180424 Kirby
+# 20180426 Kirby
 
 
 umask 077
@@ -65,6 +65,10 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.nmap-auth"
     echo "... outputs $RECONDIR/${TARGET}.nmap-exploitvuln"
     echo "... outputs $RECONDIR/${TARGET}.nmap-discoverysafe"
+    echo "... outputs $RECONDIR/${TARGET}.nmap-ajp-brute"
+    echo "... outputs $RECONDIR/${TARGET}.nmap-xmpp-brute"
+    echo "... outputs $RECONDIR/${TARGET}.nmap-oracle-sid-brute"
+    echo "... outputs $RECONDIR/${TARGET}.nmap-ipmi-brute"
     otherNmaps &
     
     echo "examining open ports"
@@ -119,6 +123,54 @@ function MAIN()
         else
             ssl=0
             proto="http"
+        fi
+
+        # telnet
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//telnet'
+        then
+            echo "starting doHydra $port telnet"
+            echo "... outputs $RECONDIR/${TARGET}.telnet.$port.hydra"
+            doHydra $port telnet telnet-betterdefaultpasslist.txt &
+        fi
+    
+        # ssh
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//ssh'
+        then
+            echo "starting doHydra $port ssh"
+            echo "... outputs $RECONDIR/${TARGET}.ssh.$port.hydra"
+            doHydra $port ssh ssh-betterdefaultpasslist.txt &
+        fi
+    
+        # mssql
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//ms-sql'
+        then
+            echo "starting doHydra $port mssql"
+            echo "... outputs $RECONDIR/${TARGET}.mssql.$port.hydra"
+            doHydra $port mssql mssql-betterdefaultpasslist.txt &
+        fi
+    
+        # mysql
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//mysql'
+        then
+            echo "starting doHydra $port mysql"
+            echo "... outputs $RECONDIR/${TARGET}.mysql.$port.hydra"
+            doHydra $port mysql mysql-betterdefaultpasslist.txt &
+        fi
+    
+        # oracle
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//oracle-tns'
+        then
+            echo "starting doHydra $port oracle"
+            echo "... outputs $RECONDIR/${TARGET}.oracle.$port.hydra"
+            doHydra $port oracle-listener oracle-betterdefaultpasslist.txt &
+        fi
+
+        # vnc
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//vnc'
+        then
+            echo "starting passHydra $port vnc"
+            echo "... outputs $RECONDIR/${TARGET}.vnc.$port.hydra"
+            passHydra $port vnc vnc-betterdefaultpasslist.txt &
         fi
 
         # rsh
@@ -248,6 +300,10 @@ function MAIN()
             echo "starting postgresqlScan for port $port"
             echo "... outputs $RECONDIR/${TARGET}.postgresql.$port"
             postgresqlScan $port &
+
+            echo "starting postgresqlHydra for port $port"
+            echo "... outputs $RECONDIR/${TARGET}.postgresql.$port.hydra"
+            doHydra $port postgres postgres-betterdefaultpasslist.txt &
         fi
 
         # mysql
@@ -359,6 +415,10 @@ function MAIN()
             sleep 60
         fi
     done
+
+    echo "starting maybeDefCreds"
+    echo "... outputs $RECONDIR/${TARGET}.maybeDefCreds"
+    maybeDefCreds
     
     if screen -ls |grep -q ".${TARGET}."
     then
@@ -399,7 +459,7 @@ function buildEnv()
 {
     local file
     local pkg
-    local pkgs="alien bind9-host blindelephant cewl curl dirb dnsenum dnsrecon exif exploitdb eyewitness hydra ike-scan john joomscan jq ldap-utils libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nsis open-iscsi openvas-cli postgresql-client-common rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
+    local pkgs="alien bind9-host blindelephant cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness hydra ike-scan john joomscan jq ldap-utils libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
 
     for pkg in $pkgs
     do
@@ -414,7 +474,7 @@ function buildEnv()
     TIMEOUT='timeout --kill-after=10 --foreground'
     local rawtty=$(tty)
     TTY=${rawtty#*/*/}
-
+    BORDER='################################################################################' 
     DATE=$(date +"%Y%m%d%H%M")
 
     if [[ "$LOGNAME" != "root" ]]
@@ -450,31 +510,6 @@ function buildEnv()
         return 1
     fi
 
-    # make sure we have dictionary files
-    for file in /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \
-    /usr/share/nmap/nselib/data/snmpcommunities.lst \
-    /usr/share/seclists/Discovery/SNMP/snmp.txt \
-    /usr/share/wordlists/metasploit/sap_default.txt \
-    /usr/share/wordlists/metasploit/idrac_default_pass.txt \
-    /usr/share/wordlists/metasploit/http_default_pass.txt \
-    /usr/share/wordlists/metasploit/http_default_users.txt \
-    /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt \
-    /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt \
-    /usr/share/nmap/nselib/data/vhosts-full.lst \
-    /usr/share/dirb/wordlists/common.txt \
-    /usr/share/wordlists/metasploit/sap_icm_paths.txt \
-    /usr/share/wordlists/metasploit/joomla.txt \
-    /usr/share/wordlists/metasploit/http_owa_common.txt \
-    /usr/share/wfuzz/wordlist/general/admin-panels.txt
-    do
-        if [[ ! -f "$file" ]]
-        then
-            echo "FAILURE: missing file $file"
-            echo "run: apt-get install -y $pkgs"
-            return 1
-        fi
-    done
-
     # prep default usernames/passwords
     mkdir -p "$RECONDIR"/tmp >/dev/null 2>&1
     if [[ ! -f "$RECONDIR"/tmp/users.lst ]] \
@@ -482,48 +517,18 @@ function buildEnv()
     then
         rm -f "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp >/dev/null 2>&1
 
-        awk '{print $1}' /usr/share/wordlists/metasploit/sap_default.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/idrac_default_pass.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/http_default_users.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
-        cat /usr/share/seclists/Usernames/top_shortlist.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/users.tmp 2>/dev/null
+        cat /usr/share/wordlists/metasploit/http_default_users.txt \
+            /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt \
+            /usr/share/seclists/Usernames/top-usernames-shortlist.txt \
+            >> "$RECONDIR"/tmp/users.tmp 
 
-        awk '{print $2}' /usr/share/wordlists/metasploit/sap_default.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/http_default_pass.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/wordpress_attacks_july2014.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/rockyou-5.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/best15.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/Sucuri_Top_Wordpress_Passwords.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/splashdata_2014.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/splashdata_2015.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/SplashData-2015.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/top_shortlist.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/password-permutations.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/passwords_clarkson_82.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
-        cat /usr/share/seclists/Passwords/rockyou-10.txt 2>/dev/null \
-            >> "$RECONDIR"/tmp/passwds.tmp 2>/dev/null
+        cat /usr/share/seclists/Passwords/Common-Credentials/best110.txt \
+            /usr/share/seclists/Passwords/Common-Credentials/top-20-common-SSH-passwords.txt \
+            /usr/share/seclists/Passwords/Common-Credentials/top-shortlist.txt \
+            /usr/share/wordlists/metasploit/idrac_default_pass.txt \
+            >> "$RECONDIR"/tmp/passwds.tmp
 
         # add extra users
-        echo "Demo" >> "$RECONDIR"/tmp/users.tmp
         echo "demo" >> "$RECONDIR"/tmp/users.tmp
         echo "account" >> "$RECONDIR"/tmp/users.tmp
         echo "activemq" >> "$RECONDIR"/tmp/users.tmp
@@ -629,14 +634,14 @@ function buildEnv()
 
         # add extra passwords
         echo "adminadmin" >> "$RECONDIR"/tmp/passwds.tmp
-        echo "calvin" >> "$RECONDIR"/tmp/passwds.tmp
         echo "changethis" >> "$RECONDIR"/tmp/passwds.tmp
         echo "changeme" >> "$RECONDIR"/tmp/passwds.tmp
         echo "j5Brn9" >> "$RECONDIR"/tmp/passwds.tmp
         echo "UNKNOWN" >> "$RECONDIR"/tmp/passwds.tmp
+        echo "Password" >> "$RECONDIR"/tmp/passwds.tmp
 
-        cat "$RECONDIR"/tmp/users.tmp |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/users.lst
-        cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/passwds.lst
+        cat "$RECONDIR"/tmp/users.tmp |dos2unix |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/users.lst
+        cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp |dos2unix |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/passwds.lst
     fi
 
     rm -f "$RECONDIR"/tmp/mkrecon.txt >/dev/null 2>&1
@@ -678,7 +683,7 @@ function buildEnv()
             /usr/share/dnsrecon/namelist.txt \
             /usr/share/dnsenum/dns.txt \
             /usr/share/nmap/nselib/data/vhosts-full.lst \
-            |sort -u >"$RECONDIR"/tmp/dns.lst 2>/dev/null
+            |sort -u >"$RECONDIR"/tmp/dns.lst
     fi
 
     if echo $TARGET |egrep -q '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+'
@@ -714,10 +719,12 @@ function openvasScan()
 
     if ! omp -u $ovusername -w $ovpassword -g >/dev/null 2>&1
     then
+        echo "$BANNER"
         echo "WARNING: UNABLE TO CONNECT TO OPENVAS"
         echo "If you need to install OpenVas, run apt-get install -y greenbone-security-assistant greenbone-security-assistant-common openvas openvas-cli openvas-manager openvas-manager-common openvas-scanner"
         echo "Then run openvas-check-setup and follow the instructions until it says everything is working."
         echo "Also change the username/password in the openvasScan function of this script."
+        echo "$BANNER"
         return 1
     fi
 
@@ -776,7 +783,7 @@ function snmpScan()
         /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \
         /usr/share/nmap/nselib/data/snmpcommunities.lst \
         /usr/share/seclists/Discovery/SNMP/snmp.txt \
-        |egrep -v '^#'|sort -u 2>/dev/null)
+        |egrep -v '^#'|sort -u )
     do
         echo "snmp-check -c $community $IP 2>&1 \
             |egrep -v '^snmp-check |^Copyright |SNMP request timeout' \
@@ -798,7 +805,7 @@ function snmpScan()
 function nmapScan()
 {
     # other udp ports: U:111,123,12444,1258,13,13200,1604,161,17185,17555,177,1900,20110,20510,2126,2302,23196,26000,27138,27244,27777,27950,28138,30710,3123,31337,3478,3671,37,3702,3784,389,44818,4569,47808,49160,49161,49162,500,5060,53,5351,5353,5683,623,636,64738,6481,67,69,8611,8612,8767,88,9100,9600 
-    nmap --open -T3 -sT -sU -p T:1-65535,U:67,68,69,111,123,161,500,53,623,5353,1813,4500,177,5060,5269 \
+    nmap -Pn --open -T3 -sT -sU -p T:1-65535,U:67,68,69,111,123,161,500,53,623,5353,1813,4500,177,5060,5269 \
         --script=version -sV --version-all -O \
         -oN "$RECONDIR"/${TARGET}.nmap \
         -oG "$RECONDIR"/${TARGET}.ngrep \
@@ -856,14 +863,21 @@ function otherNmaps()
         scanports=$(joinBy , $tcpports $udpports)
     done
 
-    # run nmap scripts in pairs that have category overlaps
-    #screen -dmS ${TARGET}.nmap-authbrute.$RANDOM $TIMEOUT 14400 nmap -T3 -p $scanports --script=auth,brute -oN "$RECONDIR"/${TARGET}.nmap-authbrute $TARGET
-    screen -dmS ${TARGET}.nmap-auth.$RANDOM $TIMEOUT 14400 \
-        nmap -T3 -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
-    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM $TIMEOUT 14400 \
-        nmap -T3 -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
-    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM $TIMEOUT 14400 \
-        nmap -T3 -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
+    screen -dmS ${TARGET}.nmap-ajp-brute.$RANDOM $TIMEOUT 28800 \
+        nmap -T3 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET
+    screen -dmS ${TARGET}.nmap-xmpp-brute.$RANDOM $TIMEOUT 28800 \
+        nmap -T3 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET
+    screen -dmS ${TARGET}.nmap-oracle-sid-brute.$RANDOM $TIMEOUT 28800 \
+        nmap -T3 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET
+    screen -dmS ${TARGET}.nmap-ipmi-brute.$RANDOM $TIMEOUT 28800 \
+        nmap -T3 -Pn -sU --script ipmi-brute -p 623 -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET
+
+    screen -dmS ${TARGET}.nmap-auth.$RANDOM $TIMEOUT 28800 \
+        nmap -T3 -Pn -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
+    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM $TIMEOUT 28800 \
+        nmap -T3 -Pn -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
+    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM $TIMEOUT 28800 \
+        nmap -T3 -Pn -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
 
     return 0
 }    
@@ -899,7 +913,7 @@ function nfsScan()
     # the nfs-ls nse script only works half the time
     for i in {1..10}
     do
-        output=$($TIMEOUT 60 nmap -p 111 --script=nfs-ls $TARGET 2>&1)
+        output=$($TIMEOUT 60 nmap -Pn -p 111 --script=nfs-ls $TARGET 2>&1)
         if echo $output|grep -q nfs-ls:
         then
             echo "$output" > "$RECONDIR"/${TARGET}.nmap-nfsls
@@ -1022,24 +1036,65 @@ function mysqlScan()
 
     for db in $(cat "$RECONDIR"/${TARGET}.mysql.$port |awk '/^Database:/ {print $2}')
     do
-        echo "##################################################" \
-            >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
         echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
         $TIMEOUT 60 mysql -E -u root -D "$db" -e 'show tables;' --connect-timeout=30 -h $TARGET \
             |grep -v 'row *' >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
     done
 
-    echo "##################################################" \
-        >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
     echo "show full processlist;" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
     $TIMEOUT 60 mysql -E -u root -e 'show full processlist;' --connect-timeout=30 -h $TARGET \
         >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
 
-    echo "##################################################" \
-        >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
     echo "select host,user,password from mysql.user;" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
     $TIMEOUT 60 mysql -E -u root -e 'select host,user,password from mysql.user;' --connect-timeout=30 -h $TARGET \
         >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function passHydra()
+{
+    local port=$1
+    local service=$2
+    local file="/usr/share/seclists/Passwords/Default-Credentials/$3"
+
+    if [[ ! -f "$file" ]]
+    then
+        echo "ERROR in passHydra: file not found: $file"
+        return 1
+    fi
+
+    $TIMEOUT 28800 hydra -I \
+        -P $file \
+        -u -t 1 -s $port $TARGET $service \
+        >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function doHydra()
+{
+    local port=$1
+    local service=$2
+    local file="/usr/share/seclists/Passwords/Default-Credentials/$3"
+
+    if [[ ! -f "$file" ]]
+    then
+        echo "ERROR in doHydra: file not found: $file"
+        return 1
+    fi
+
+    $TIMEOUT 28800 hydra -I \
+        -C $file \
+        -u -t 1 -s $port $TARGET $service \
+        >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
 
     return 0
 }
@@ -1056,20 +1111,19 @@ function postgresqlScan()
 
     for db in $(cat "$RECONDIR"/${TARGET}.postgresql.$port |awk '/^Name/ {print $3}')
     do
-        echo "##################################################" \
-            >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
         echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
         $TIMEOUT 60 psql -c 'SELECT * FROM pg_catalog.pg_tables;' -d $db \
             >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
     done
 
-    echo "################################################## select * from pg_stat_activity" \
-        >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+    echo "select * from pg_stat_activity" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
     $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -x -c 'select * from pg_stat_activity;' \
         >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
 
-    echo "################################################## select * from pg_catalog.pg_shadow" \
-        >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+    echo "select * from pg_catalog.pg_shadow" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
     $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -x -c 'select * from pg_catalog.pg_shadow;' \
         >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
 
@@ -1187,6 +1241,7 @@ function webDiscover()
     local wordlist
     local urlfile
 
+
     # Build dirb dictionary array
     for wordlist in /usr/share/dirb/wordlists/common.txt \
     /usr/share/dirb/wordlists/vulns/*txt \
@@ -1206,14 +1261,13 @@ function webDiscover()
     # first run through baseurls
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
-        echo "... testing $url"
         urlfile=${url//\//,}
 
-        echo "##################################################" >>"$RECONDIR"/${TARGET}.robots.txt
+        echo "$BORDER" >>"$RECONDIR"/${TARGET}.robots.txt
         echo "${url}/robots.txt" >>"$RECONDIR"/${TARGET}.robots.txt
         curl -s ${url}/robots.txt >>"$RECONDIR"/${TARGET}.robots.txt 2>&1
         echo "" >>"$RECONDIR"/${TARGET}.robots.txt
-        echo "##################################################" >>"$RECONDIR"/${TARGET}.robots.txt
+        echo "$BORDER" >>"$RECONDIR"/${TARGET}.robots.txt
 
         for robotdir in $(curl -s ${url}/robots.txt 2>&1 \
             |egrep '^Disallow: ' |awk '{print $2}' |sed -e 's/\*//g' |tr -d '\r')
@@ -1238,7 +1292,6 @@ function webDiscover()
     # second run through baseurls.  dirb may take hours
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
-        echo "... running dirb on $url"
         # do not put all txt files on dirb cmdline cuz it truncates it's args
         # instead iterate over an array
         mkdir -p "$RECONDIR"/tmp/${TARGET}.dirb >/dev/null 2>&1
@@ -1253,7 +1306,6 @@ function webDiscover()
     # run dirb on everything robots.txt tells us to ignore
     for url in ${a_robots[@]}
     do
-        echo "... running dirb for robots on $url"
         for dirbfile in ${a_dirbfiles[@]}
         do
             shortfile=${dirbfile##*/}
@@ -1372,7 +1424,7 @@ function getHeaders()
 
     for url in $(cat "$RECONDIR"/${TARGET}.urls)
     do 
-        echo "##################################################" >> "$RECONDIR"/${TARGET}.headers 2>&1
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.headers 2>&1
         echo "$url" >> "$RECONDIR"/${TARGET}.headers
         $TIMEOUT 30 wget -q -O /dev/null --no-check-certificate -S  -D $TARGET --method=OPTIONS "$url" \
             >> "$RECONDIR"/${TARGET}.headers 2>&1
@@ -1651,8 +1703,7 @@ function mechDumpURLs()
         output=$($TIMEOUT 60 mech-dump --absolute --forms "$url" 2>/dev/null)
         if [[ ${#output} -gt 0 ]]
         then
-            echo "################################################################################" \
-                >> "$RECONDIR"/${TARGET}.mech-dump
+            echo "$BORDER" >> "$RECONDIR"/${TARGET}.mech-dump
             echo "URL: $url" >> "$RECONDIR"/${TARGET}.mech-dump
             echo "$output" >> "$RECONDIR"/${TARGET}.mech-dump
         fi
@@ -1678,17 +1729,17 @@ function davScanURLs()
         |sort -u )
     do
         # try multiple DAV scans.  None of these are 100% reliable, so try several.
-        echo "##################################################" >> "$RECONDIR"/${TARGET}.davtest 
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.davtest 
         echo "TESTING $url" >> "$RECONDIR"/${TARGET}.davtest 
         $TIMEOUT 90 davtest -cleanup -url "$url" 2>&1|grep SUCCEED >> "$RECONDIR"/${TARGET}.davtest
-        echo "##################################################" >> "$RECONDIR"/${TARGET}.davtest 
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.davtest 
 
-        echo "##################################################" >> "$RECONDIR"/${TARGET}.cadaver 
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.cadaver 
         echo "TESTING $url" >> "$RECONDIR"/${TARGET}.cadaver 
         echo ls | $TIMEOUT 10 cadaver "$url" 2>&1 \
             |egrep -v 'command can only be used when connected to the server.|^Try running|^Could not access|^405 Method|^Connection to' \
             >> "$RECONDIR"/${TARGET}.cadaver
-        echo "##################################################" >> "$RECONDIR"/${TARGET}.cadaver 
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.cadaver 
 
         port=$(getPortFromUrl "$url")
         output=$($TIMEOUT 90 nmap -p $port -Pn \
@@ -1697,10 +1748,10 @@ function davScanURLs()
             ${TARGET} 2>&1 )
         if echo $output |grep -q http-webdav-scan:
         then
-            echo "##################################################" >> "$RECONDIR"/${TARGET}.nmap-webdav 
+            echo "$BORDER" >> "$RECONDIR"/${TARGET}.nmap-webdav 
             echo "TESTING $url" >> "$RECONDIR"/${TARGET}.nmap-webdav
             echo "$output" >>"$RECONDIR"/${TARGET}.nmap-webdav
-            echo "##################################################" >> "$RECONDIR"/${TARGET}.nmap-webdav 
+            echo "$BORDER" >> "$RECONDIR"/${TARGET}.nmap-webdav 
         fi
     done
     grep -q SUCCEED "$RECONDIR"/${TARGET}.davtest 2>/dev/null \
@@ -1728,7 +1779,7 @@ function exifScanURLs()
         if exif /tmp/${TARGET}.exiftestfile >/dev/null 2>&1 
         then 
             echo "<hr>" >> $exifreport
-            echo "<!-- ################################################## -->" >> $exifreport
+            echo "<!-- $BORDER -->" >> $exifreport
             echo "<a href='$url'>$url</a>" >> $exifreport
             echo "<pre>" >> $exifreport
             exif /tmp/${TARGET}.exiftestfile 2>/dev/null \
@@ -1781,7 +1832,7 @@ function scanURLs()
 {
     local url
 
-    screen -dmS ${TARGET}.urlsew.$RANDOM $TIMEOUT 7200 \
+    screen -dmS ${TARGET}.urlsew.$RANDOM $TIMEOUT 28800 \
         eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.urlsEyeWitness \
         --no-dns --no-prompt --all-protocols -f "$RECONDIR"/${TARGET}.urls
 
@@ -1803,13 +1854,13 @@ function scanURLs()
     for url in $(egrep -i 'wordpress|/wp' "$RECONDIR"/${TARGET}.whatweb 2>/dev/null |head -1 |awk '{print $1}')
     do
         echo "Running wpscan on $url"
-        echo "##################################################" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
         $TIMEOUT 900 wpscan -t 10 --follow-redirection --disable-tls-checks -e \
             --no-banner --no-color --batch --url "$url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
 
         echo "Running wpscan admin crack on $url"
-        echo "##################################################" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
         echo "CRACKING ADMIN FOR URL: $url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
         $TIMEOUT 900 wpscan -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
             --username admin >> "$RECONDIR"/${TARGET}.wpscan 2>&1
@@ -1819,7 +1870,7 @@ function scanURLs()
     for url in $(grep -i joomla "$RECONDIR"/${TARGET}.whatweb 2>/dev/null |head -1 |awk '{print $1}')
     do
         echo "Running joomscan on $url"
-        echo "##################################################" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
         $TIMEOUT 900 joomscan -pe -u "$url" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
     done
@@ -1828,7 +1879,7 @@ function scanURLs()
     for url in $(egrep -i '\.php$' "$RECONDIR"/${TARGET}.urls |awk '{print $1}')
     do
         echo "Running fimap on $url"
-        echo "##################################################" >> "$RECONDIR"/${TARGET}.fimap 2>&1 
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.fimap 2>&1 
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.fimap 2>&1 
         $TIMEOUT 300 fimap --force-run -4 -u "$url" 2>&1 \
             |egrep -v '^fimap |^Another fimap|^:: |^Starting harvester|^No links found|^AutoAwesome is done' \
@@ -1867,9 +1918,39 @@ function ipmiScan()
 ################################################################################
 function ncrackScan()
 {
-    screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack $TIMEOUT 7200 \
+    screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack \
+        $TIMEOUT 28900 \
         ncrack -iN "$RECONDIR"/${TARGET}.nmap -U "$RECONDIR"/tmp/users.lst \
-        -P "$RECONDIR"/tmp/passwds.lst -v -g CL=3,cr=5,to=3h
+        -P "$RECONDIR"/tmp/passwds.lst -v -g CL=3,cr=5,to=8h
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function maybeDefCreds()
+{
+    local IFS=$'\n'
+    local name
+    local defpassfile='/usr/share/seclists/Passwords/Default-Credentials/default-passwords.csv'
+    local logfile="$RECONDIR/${TARGET}.maybeDefCreds"
+
+    for name in $(cat $defpassfile \
+        |dos2unix |cut -d',' -f1 |tr '[A-Z]' '[a-z]' |sed -e 's/"//g' |sort -u)
+    do
+        if egrep -qi "\W$name\W" *.nmap *.whatweb 2>/dev/null 
+        then
+            echo "$BORDER" >>$logfile
+            echo "FOUND $name" >>$logfile
+            echo "" >>$logfile
+            egrep -i "\W$name\W" *.nmap *.whatweb >>$logfile
+            echo "" >>$logfile
+            echo "POSSIBLE DEFAULT CREDENTIALS:" >>$logfile
+            egrep -i "^$name|^\"$name" $defpassfile >>$logfile
+            echo "" >>$logfile
+            echo "$BORDER" >>$logfile
+        fi
+    done
 
     return 0
 }

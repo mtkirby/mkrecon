@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180428 Kirby
+# 20180429 Kirby
 
 
 umask 077
@@ -621,6 +621,7 @@ function openvasScan()
         echo "Then run openvas-check-setup and follow the instructions until it says everything is working."
         echo "Also change the username/password in the openvasScan function of this script."
         echo "$BORDER"
+        echo "Continuing without OpenVAS..."
         return 1
     fi
 
@@ -759,14 +760,14 @@ function otherNmaps()
         scanports=$(joinBy , $tcpports $udpports)
     done
 
-    screen -dmS ${TARGET}.nmap-ajp-brute.$RANDOM $TIMEOUT 28800 \
-        nmap -T3 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET
-    screen -dmS ${TARGET}.nmap-xmpp-brute.$RANDOM $TIMEOUT 28800 \
-        nmap -T3 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET
-    screen -dmS ${TARGET}.nmap-oracle-sid-brute.$RANDOM $TIMEOUT 28800 \
-        nmap -T3 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET
-    screen -dmS ${TARGET}.nmap-ipmi-brute.$RANDOM $TIMEOUT 28800 \
-        nmap -T3 -Pn -sU --script ipmi-brute -p 623 -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET
+    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET |grep -q '|' \
+        || rm -f "$RECONDIR"/${TARGET}.nmap-ajp-brute ) &
+    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET |grep -q '|' \
+        || rm -f "$RECONDIR"/${TARGET}.nmap-xmpp-brute ) &
+    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET |grep -q '|' \
+        || rm -f "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute ) &
+    ( $TIMEOUT 28800 nmap -T3 -Pn -sU --script ipmi-brute -p 623 -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET |grep -q '|' \
+        || rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute ) &
 
     screen -dmS ${TARGET}.nmap-auth.$RANDOM $TIMEOUT 28800 \
         nmap -T3 -Pn -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
@@ -969,6 +970,10 @@ function passHydra()
         -P $file \
         -u -t 1 -s $port $TARGET $service \
         >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
+    if ! grep -q 'valid pair found' "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+    then
+        rm -f "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+    fi
 
     return 0
 }
@@ -991,6 +996,10 @@ function doHydra()
         -C $file \
         -u -t 1 -s $port $TARGET $service \
         >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
+    if ! grep -q 'valid pair found' "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+    then
+        rm -f "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+    fi
 
     return 0
 }
@@ -1864,7 +1873,7 @@ function defaultCreds()
             echo "$BORDER" >>$logfile
             echo "FOUND $name" >>$logfile
             echo "" >>$logfile
-            egrep -i "\W$name\W" *.nmap *.whatweb >>$logfile
+            egrep -i "\W$name\W" *.nmap *.whatweb >>$logfile 2>/dev/null
             echo "" >>$logfile
             echo "POSSIBLE DEFAULT CREDENTIALS:" >>$logfile
             egrep -i "^$name|^\"$name" $defpassfile >>$logfile

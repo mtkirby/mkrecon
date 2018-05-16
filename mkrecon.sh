@@ -1,6 +1,5 @@
 #!/bin/bash
-# 20180429 Kirby
-
+# 20180515 Kirby
 
 umask 077
 
@@ -49,9 +48,10 @@ function MAIN()
         echo "FAILED: no ports found"
         exit 1
     fi
-    echo "starting ncrackScan"
+    echo "starting crackers"
     echo "... outputs $RECONDIR/${TARGET}.ncrack"
-    ncrackScan &
+    echo "... outputs $RECONDIR/${TARGET}.brutespray"
+    crackers &
     
     echo "starting searchsploit"
     echo "... outputs $RECONDIR/${TARGET}.searchsploit"
@@ -130,7 +130,8 @@ function MAIN()
         then
             echo "starting doHydra $port telnet"
             echo "... outputs $RECONDIR/${TARGET}.telnet.$port.hydra"
-            doHydra $port telnet telnet-betterdefaultpasslist.txt &
+            doHydra $port telnet /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt &
+            doHydra $port telnet /usr/share/routersploit/routersploit/wordlists/defaults.txt &
         fi
     
         # ssh
@@ -138,7 +139,8 @@ function MAIN()
         then
             echo "starting doHydra $port ssh"
             echo "... outputs $RECONDIR/${TARGET}.ssh.$port.hydra"
-            doHydra $port ssh ssh-betterdefaultpasslist.txt &
+            doHydra $port ssh /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt &
+            doHydra $port ssh /usr/share/routersploit/routersploit/wordlists/defaults.txt &
         fi
     
         # mssql
@@ -146,7 +148,7 @@ function MAIN()
         then
             echo "starting doHydra $port mssql"
             echo "... outputs $RECONDIR/${TARGET}.mssql.$port.hydra"
-            doHydra $port mssql mssql-betterdefaultpasslist.txt &
+            doHydra $port mssql /usr/share/seclists/Passwords/Default-Credentials/mssql-betterdefaultpasslist.txt &
         fi
     
         # mysql
@@ -154,7 +156,7 @@ function MAIN()
         then
             echo "starting doHydra $port mysql"
             echo "... outputs $RECONDIR/${TARGET}.mysql.$port.hydra"
-            doHydra $port mysql mysql-betterdefaultpasslist.txt &
+            doHydra $port mysql /usr/share/seclists/Passwords/Default-Credentials/mysql-betterdefaultpasslist.txt &
         fi
     
         # oracle
@@ -162,7 +164,8 @@ function MAIN()
         then
             echo "starting doHydra $port oracle"
             echo "... outputs $RECONDIR/${TARGET}.oracle.$port.hydra"
-            doHydra $port oracle-listener oracle-betterdefaultpasslist.txt &
+            doHydra $port oracle-listener /usr/share/seclists/Passwords/Default-Credentials/oracle-betterdefaultpasslist.txt &
+            doHydra $port oracle-listener "$RECONDIR"/tmp/oracle-default-accounts.lst &
         fi
 
         # vnc
@@ -170,7 +173,7 @@ function MAIN()
         then
             echo "starting passHydra $port vnc"
             echo "... outputs $RECONDIR/${TARGET}.vnc.$port.hydra"
-            passHydra $port vnc vnc-betterdefaultpasslist.txt &
+            passHydra $port vnc /usr/share/seclists/Passwords/Default-Credentials/vnc-betterdefaultpasslist.txt &
         fi
 
         # rsh
@@ -202,21 +205,26 @@ function MAIN()
             ipmiScan &
         fi
     
+        # memcache
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//memcached'
+        then
+            echo "starting memcacheScan"
+            echo "... outputs $RECONDIR/${TARGET}.msf.memcached.${port}.out"
+            memcacheScan $port &
+        fi
+    
         # dns
         if echo $rawport |egrep -q '53/open/udp//domain'
         then
             echo "starting dnsScan"
-            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr"
-            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.192.168"
-            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.172.16"
-            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.10.0"
-            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.10.64"
-            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.10.128"
-            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.10.192"
+            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.local"
+            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.rfc1918"
             echo "... outputs $RECONDIR/${TARGET}.dnsenum"
             echo "... outputs $RECONDIR/${TARGET}.dnsrecon"
             echo "... outputs $RECONDIR/${TARGET}.host-a"
             echo "... outputs $RECONDIR/${TARGET}.host-l"
+            echo "... outputs $RECONDIR/${TARGET}.arpas/"
+            echo "... outputs $RECONDIR/${TARGET}.domains"
             dnsScan &
         fi
     
@@ -261,7 +269,8 @@ function MAIN()
         then
             echo "starting ldapScan for port $port"
             echo "... outputs $RECONDIR/${TARGET}.ldap.${port}"
-            ldapScan $port
+            echo "... outputs $RECONDIR/${TARGET}.ldap.${port}.\$context"
+            ldapScan $port &
         fi
 
         # elasticsearch
@@ -303,7 +312,7 @@ function MAIN()
 
             echo "starting postgresqlHydra for port $port"
             echo "... outputs $RECONDIR/${TARGET}.postgresql.$port.hydra"
-            doHydra $port postgres postgres-betterdefaultpasslist.txt &
+            doHydra $port postgres /usr/share/seclists/Passwords/Default-Credentials/postgres-betterdefaultpasslist.txt &
         fi
 
         # mysql
@@ -459,7 +468,7 @@ function buildEnv()
 {
     local file
     local pkg
-    local pkgs="alien bind9-host blindelephant cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness hydra ike-scan john joomscan jq ldap-utils libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
+    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness hydra ike-scan john joomscan jq ldap-utils libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common routersploit rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
 
     for pkg in $pkgs
     do
@@ -539,6 +548,10 @@ function buildEnv()
         cat "$RECONDIR"/tmp/users.tmp |dos2unix |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/users.lst
         cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp |dos2unix |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/passwds.lst
     fi
+
+    # convert nmap's default oracle list to hydra format
+    cat /usr/share/nmap/nselib/data/oracle-default-accounts.lst |grep '/' |sed -e 's/\//:/g' \
+        > "$RECONDIR"/tmp/oracle-default-accounts.lst 
 
     rm -f "$RECONDIR"/tmp/mkrecon.txt >/dev/null 2>&1
     echo '.cvspass' >> "$RECONDIR"/tmp/mkrecon.txt
@@ -634,7 +647,13 @@ function openvasScan()
     reportTXT=$(omp -u $ovusername -w $ovpassword -F |awk '/  TXT$/ {print $1}' |head -1)
     reportHTML=$(omp -u $ovusername -w $ovpassword -F |awk '/  HTML$/ {print $1}' |head -1)
 
-    configUuid=$(omp -u $ovusername -w $ovpassword -g|egrep ' Full and fast$'|awk '{print $1}')
+    # If you want customized settings, call the profile "mkrecon"
+    if omp -u $ovusername -w $ovpassword -g 2>&1 |egrep -q ' mkrecon$'
+    then
+        configUuid=$(omp -u $ovusername -w $ovpassword -g|egrep ' mkrecon$'|awk '{print $1}')
+    else
+        configUuid=$(omp -u $ovusername -w $ovpassword -g|egrep ' Full and fast$'|awk '{print $1}')
+    fi
 
     targetUuid=$(omp -u $ovusername -w $ovpassword --pretty-print --xml "<create_target>
           <name>${TARGET}-$RANDOM</name>
@@ -680,6 +699,7 @@ function snmpScan()
         /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \
         /usr/share/nmap/nselib/data/snmpcommunities.lst \
         /usr/share/seclists/Discovery/SNMP/snmp.txt \
+        /usr/share/routersploit/routersploit/wordlists/snmp.txt \
         |egrep -v '^#'|sort -u )
     do
         echo "snmp-check -c $community $IP 2>&1 \
@@ -739,6 +759,7 @@ function otherNmaps()
     local tcpports
     local udpports
     local scanports
+    local sid
 
     if [[ ! -f "$RECONDIR"/${TARGET}.ngrep ]]
     then
@@ -762,19 +783,35 @@ function otherNmaps()
 
     ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ajp-brute ) &
+
     ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-xmpp-brute ) &
+
     ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET |grep -q '|' \
-        || rm -f "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute ) &
+        if grep -q '|' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute
+        then
+            for sid in $(awk '/^|/ {print $2}' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute |grep -v oracle-sid-brute)
+            do
+                $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET &
+                $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script oracle-enum-users --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET &
+            done
+        else
+            rm -f "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute 
+        fi
+    ) &
+
     ( $TIMEOUT 28800 nmap -T3 -Pn -sU --script ipmi-brute -p 623 -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute ) &
 
     screen -dmS ${TARGET}.nmap-auth.$RANDOM $TIMEOUT 28800 \
         nmap -T3 -Pn -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
+
     screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM $TIMEOUT 28800 \
         nmap -T3 -Pn -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
+
     screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM $TIMEOUT 28800 \
         nmap -T3 -Pn -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
+    
 
     return 0
 }    
@@ -826,6 +863,10 @@ function nfsScan()
 function dnsScan()
 {
     local domain
+    local arpa
+    local subnet=()
+    local a
+    local b
 
     domain=$(host $IP $IP |grep 'domain name pointer' \
         |tail -1 |sed -e 's/.*domain name pointer \(.*\)./\1/'  |sed -e 's/\.$//')
@@ -834,28 +875,80 @@ function dnsScan()
         domain=$(host $IP $IP |grep 'domain name pointer' |tail -1 \
             |sed -e 's/.*domain name pointer \(.*\)./\1/'  |sed -e 's/\.$//' |cut -d'.' -f2-)
     fi
-    $TIMEOUT 900 dnsrecon -n $TARGET -r ${IP%.*}.0-${IP%.*}.255  \
-        >>"$RECONDIR"/${TARGET}.dnsreconptr 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 192.168.0.0-192.168.255.255  \
-        >>"$RECONDIR"/${TARGET}.dnsreconptr.192.168 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 172.16.0.0-172.31.255.255  \
-        >>"$RECONDIR"/${TARGET}.dnsreconptr.172.16 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.0.0.0-10.63.255.255  \
-        >>"$RECONDIR"/${TARGET}.dnsreconptr.10.0 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.64.0.0-10.127.255.255  \
-        >>"$RECONDIR"/${TARGET}.dnsreconptr.10.64 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.128.0.0-10.191.255.255  \
-        >>"$RECONDIR"/${TARGET}.dnsreconptr.10.128 2>&1 &
-    $TIMEOUT 10800 dnsrecon -n $TARGET -r 10.192.0.0-10.255.255.255  \
-        >>"$RECONDIR"/${TARGET}.dnsreconptr.10.192 2>&1 &
+
     if [[ $domain =~ ^..* ]]
     then
         $TIMEOUT 90 dnsenum --dnsserver $TARGET -f "$RECONDIR"/tmp/dns.lst --nocolor --enum -p0 $domain \
             >>"$RECONDIR"/${TARGET}.dnsenum 2>&1 &
-        $TIMEOUT 90 dnsrecon -d $domain -n $TARGET >>"$RECONDIR"/${TARGET}.dnsrecon 2>&1 &
-        $TIMEOUT 90 host -a $domain. $TARGET >>"$RECONDIR"/${TARGET}.host-a 2>&1 &
-        $TIMEOUT 90 host -l $domain. $TARGET >>"$RECONDIR"/${TARGET}.host-l 2>&1 &
+        $TIMEOUT 90 dnsrecon -d $domain -n $TARGET >>"$RECONDIR"/${TARGET}.dnsrecon 2>&1 
+        host -a $domain. $TARGET >>"$RECONDIR"/${TARGET}.host-a 2>&1 &
+        host -l $domain. $TARGET >>"$RECONDIR"/${TARGET}.host-l 2>&1 &
     fi
+
+    $TIMEOUT 900 dnsrecon -n $TARGET -r ${IP%.*}.0-${IP%.*}.255  \
+        >>"$RECONDIR"/${TARGET}.dnsreconptr.local 2>&1 
+
+    mkdir -p "$RECONDIR"/${TARGET}.arpas >/dev/null 2>&1
+    for a in {0..255}
+    do
+        for b in {0..255}
+        do
+            host -a $b.$a.10.in-addr.arpa. ${TARGET} \
+                > "$RECONDIR"/${TARGET}.arpas/$b.$a.10.in-addr.arpa. 2>&1
+            if grep -q "Host $b.$a.10.in-addr.arpa. not found:" "$RECONDIR"/${TARGET}.arpas/$b.$a.10.in-addr.arpa.
+            then
+                rm -f "$RECONDIR"/${TARGET}.arpas/$b.$a.10.in-addr.arpa. >/dev/null 2>&1
+            fi
+        done
+    done
+    for a in {16..31}
+    do
+        for b in {0..255}
+        do
+            host -a $b.$a.172.in-addr.arpa. ${TARGET} \
+                > "$RECONDIR"/${TARGET}.arpas/$b.$a.172.in-addr.arpa. 2>&1
+            if grep -q "Host $b.$a.172.in-addr.arpa. not found:" "$RECONDIR"/${TARGET}.arpas/$b.$a.172.in-addr.arpa.
+            then
+                rm -f "$RECONDIR"/${TARGET}.arpas/$b.$a.172.in-addr.arpa. >/dev/null 2>&1
+            fi
+        done
+    done
+    for a in {0..255}
+    do
+        host -a $a.168.192.in-addr.arpa. ${TARGET} \
+            > "$RECONDIR"/${TARGET}.arpas/$a.168.192.in-addr.arpa. 2>&1
+        if grep -q "Host $a.168.192.in-addr.arpa. not found:" "$RECONDIR"/${TARGET}.arpas/$a.168.192.in-addr.arpa.
+        then
+            rm -f "$RECONDIR"/${TARGET}.arpas/$a.168.192.in-addr.arpa. >/dev/null 2>&1
+        fi
+    done
+
+    # pull discovered domains from arpa files
+    egrep "IN\s+NS\s" "$RECONDIR"/${TARGET}.arpas/*.arpa. |awk '{print $5}'|cut -d'.' -f2-  |sort -u \
+        > "$RECONDIR"/${TARGET}.domains 2>&1
+    for domain in $(cat "$RECONDIR"/${TARGET}.domains)
+    do
+        host -a $domain $TARGET >>"$RECONDIR"/${TARGET}.host-a.$domain 2>&1
+        host -l $domain $TARGET >>"$RECONDIR"/${TARGET}.host-l.$domain 2>&1
+    done
+            
+
+    for arpa in $(cat "$RECONDIR"/${TARGET}.arpas/*.in-addr.arpa. \
+        |egrep "\s+IN\s+SOA\s" |awk '{print $1}' |sed -e 's/.in-addr.arpa.*//g' |sort -u)
+    do
+        IFS='.' subnet=($arpa)
+        IFS=' '
+        if [[ ${#subnet[@]} -eq 2 ]]
+        then
+            $TIMEOUT 1800 dnsrecon -n $TARGET -r ${subnet[1]}.${subnet[0]}.0.0/16 \
+                >>"$RECONDIR"/${TARGET}.dnsreconptr.${subnet[1]}.${subnet[0]} 2>&1 
+        elif [[ ${#subnet[@]} -eq 3 ]]
+        then
+            $TIMEOUT 1800 dnsrecon -n $TARGET -r ${subnet[2]}.${subnet[1]}.${subnet[0]}.0/24 \
+                >>"$RECONDIR"/${TARGET}.dnsreconptr.${subnet[2]}.${subnet[1]}.${subnet[0]} 2>&1 
+        fi
+
+    done
 
     return 0
 }
@@ -984,7 +1077,7 @@ function doHydra()
 {
     local port=$1
     local service=$2
-    local file="/usr/share/seclists/Passwords/Default-Credentials/$3"
+    local file=$3
 
     if [[ ! -f "$file" ]]
     then
@@ -1145,9 +1238,17 @@ function redisScan()
 function ldapScan()
 {
     local port=$1
+    local context
 
-    $TIMEOUT 90 ldapsearch -h $TARGET -p $port -x -s base \
+    $TIMEOUT 120 ldapsearch -h $TARGET -p $port -x -s base \
         >> "$RECONDIR"/${TARGET}.ldap.${port} 2>&1
+
+    for context in $(awk '/^namingContexts: / {print $2}' "$RECONDIR"/${TARGET}.ldap.${port})
+    do
+        $TIMEOUT 300 ldapsearch -h $TARGET -p $port -x -b "$context" \
+            >> "$RECONDIR"/${TARGET}.ldap.${port}.${context} 2>&1
+    done
+
 
     return 0
 }
@@ -1400,12 +1501,23 @@ function hydraScanURLs()
         path=/${url#*//*/}
         hydrafile=${url//\//,}.hydra
         mkdir -p "$RECONDIR"/${TARGET}.hydra >/dev/null 2>&1
+
+        # Test with separate user/pass files
         echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
         echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
         $TIMEOUT 900 hydra -I -L "$RECONDIR"/tmp/users.lst \
             -P "$RECONDIR"/tmp/passwds.lst -e nsr \
-            -u -t 5 $sslflag -s $port $TARGET http-get "$path" \
+            -u -t 3 $sslflag -s $port $TARGET http-get "$path" \
             >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
+
+        # Test with default creds from routersploit
+        echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
+        echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
+        $TIMEOUT 900 hydra -I 
+            -C /usr/share/routersploit/routersploit/wordlists/defaults.txt \
+            -u -t 3 $sslflag -s $port $TARGET http-get "$path" \
+            >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
+
         grep -q 'valid pair found' "$RECONDIR"/${TARGET}.hydra/${hydrafile} \
             && cp -f "$RECONDIR"/${TARGET}.hydra/${hydrafile} "$RECONDIR"/${TARGET}.${hydrafile} 2>/dev/null
     done
@@ -1443,7 +1555,8 @@ function webWords()
         $TIMEOUT 1800 wget -rq -D $TARGET -O "$RECONDIR"/tmp/wget.dump "$url" >/dev/null 2>&1
         if [[ -f "$RECONDIR"/tmp/wget.dump ]]
         then
-            html2dic "$RECONDIR"/tmp/wget.dump 2>/dev/null |sort -u >> "$RECONDIR"/tmp/${TARGET}.webwords 
+            html2dic "$RECONDIR"/tmp/wget.dump 2>/dev/null |grep -v -P '[^\x00-\x7f]' |sort -u \
+                >> "$RECONDIR"/tmp/${TARGET}.webwords 
             rm -f "$RECONDIR"/tmp/wget.dump >/dev/null 2>&1
         fi
     done
@@ -1477,6 +1590,19 @@ function cewlCrawl()
     cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewl 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.cewl
     cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlemail 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.cewlemail
     cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlmeta 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.cewlmeta
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function hydraPost()
+{
+
+
+    # incorrect invalid failure failed "try again" wrong forgotten
+
+    # hydra 192.168.1.69 http-form-post "/w3af/bruteforce/form_login/dataReceptor.php:user=^USER^&pass=^PASS^:Bad login" -L users.txt -P pass.txt -t 10 -w 30 -o hydra-http-post-attack.txt
 
     return 0
 }
@@ -1821,11 +1947,33 @@ function scanURLs()
 ################################################################################
 
 ################################################################################
+function memcacheScan()
+{
+    local cmdfile="$RECONDIR"/tmp/memcached.${port}.metasploit
+    local port=$1
+
+    echo "use auxiliary/gather/memcached_extractor" > $cmdfile
+    echo "set RHOSTS $TARGET" >> $cmdfile
+    echo "set RPORT $TARGET" >> $cmdfile
+    echo "run" >> $cmdfile
+    echo "exit" >> $cmdfile
+
+    /usr/share/metasploit-framework/msfconsole -n -r $cmdfile -o "$RECONDIR"/${TARGET}.msf.memcached.${port}.out >/dev/null 2>&1
+
+    # strip hex and convert newlines to real newlines
+    perl -pi -e 's|\\r\\n|\n|g' "$RECONDIR"/${TARGET}.msf.memcached.${port}.out 
+    perl -pi -e 's|\\x..| |g' "$RECONDIR"/${TARGET}.msf.memcached.${port}.out 
+
+    return 0
+}
+################################################################################
+
+################################################################################
 function ipmiScan()
 {
     local cmdfile="$RECONDIR"/tmp/ipmi.metasploit
 
-    echo "use auxiliary/scanner/ipmi/ipmi_dumphashes" >> $cmdfile
+    echo "use auxiliary/scanner/ipmi/ipmi_dumphashes" > $cmdfile
     echo "set RHOSTS $TARGET" >> $cmdfile
     echo "set OUTPUT_HASHCAT_FILE $RECONDIR/${TARGET}.ipmi.hashcat" >> $cmdfile
     echo "set OUTPUT_JOHN_FILE $RECONDIR/${TARGET}.ipmi.john" >> $cmdfile
@@ -1846,12 +1994,16 @@ function ipmiScan()
 ################################################################################
 
 ################################################################################
-function ncrackScan()
+function crackers()
 {
     screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack \
         $TIMEOUT 28900 \
         ncrack -iN "$RECONDIR"/${TARGET}.nmap -U "$RECONDIR"/tmp/users.lst \
-        -P "$RECONDIR"/tmp/passwds.lst -v -g CL=3,cr=5,to=8h
+        -P "$RECONDIR"/tmp/passwds.lst -v -g CL=2,cr=5,to=8h
+
+    screen -dmS ${TARGET}.brutespray.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.brutespray \
+        $TIMEOUT 28900 \
+        brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c
 
     return 0
 }
@@ -1868,7 +2020,8 @@ function defaultCreds()
     for name in $(cat $defpassfile \
         |dos2unix |cut -d',' -f1 |tr '[A-Z]' '[a-z]' |sed -e 's/"//g' |sort -u)
     do
-        if egrep -qi "\W$name\W" *.nmap *.whatweb 2>/dev/null 
+        # filter out nmap scan initiated because it triggered Sun on sundays
+        if cat *.nmap *.whatweb 2>/dev/null |grep -v 'scan initiated' | egrep -qi "\W$name\W" 
         then
             echo "$BORDER" >>$logfile
             echo "FOUND $name" >>$logfile

@@ -71,10 +71,6 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.nmap-ipmi-brute"
     otherNmaps &
 
-    echo "starting routersploitScan"
-    echo "... outputs $RECONDIR/${TARGET}.routersploit"
-    routersploitScan &
-    
     echo "examining open ports"
     echo "... outputs $RECONDIR/${TARGET}.baseurls"
     echo "... outputs $RECONDIR/${TARGET}.port.certificate"
@@ -331,6 +327,10 @@ function MAIN()
     
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
+        echo "starting routersploitScan"
+        echo "... outputs $RECONDIR/${TARGET}.routersploit"
+        routersploitScan &
+    
         echo "starting skipfishScan"
         echo "... outputs $RECONDIR/${TARGET}.skipfish/"
         skipfishScan &
@@ -756,26 +756,28 @@ function basicEyeWitness()
 ################################################################################
 function routersploitScan()
 {
-    local ports=()
     local port
+    local module
 
-    for port in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
+    rm -f "$RECONDIR"/tmp/routersploitscript >/dev/null 2>&1
+    for port in $(cat "$RECONDIR"/${TARGET}.baseurls |cut -d':' -f3)
     do
-        if echo $port |egrep -q '[[:digit:]]+/open/tcp/'
-        then
-            ports[${#ports[@]}]=${port%%/*}
-        fi
+        for module in \
+            scanners/autopwn \
+            creds/http_form_bruteforce \
+            creds/http_form_default \
+            creds/http_basic_bruteforce \
+            creds/http_basic_default
+        do
+            echo "use $module" >>"$RECONDIR"/tmp/routersploitscript
+            echo "set target $TARGET" >>"$RECONDIR"/tmp/routersploitscript
+            echo "set port $port" >>"$RECONDIR"/tmp/routersploitscript
+        done
     done
 
-    echo "use scanners/autopwn" >"$RECONDIR"/tmp/routersploitscript
-    echo "set target $1" >>"$RECONDIR"/tmp/routersploitscript
-    shift
-    for port in "${ports[@]}"
-    do
-        echo "set port $port" >>"$RECONDIR"/tmp/routersploitscript
-        echo "run" >>"$RECONDIR"/tmp/routersploitscript
-    done
-    cat "$RECONDIR"/tmp/routersploitscript |routersploit > "$RECONDIR"/${TARGET}.routersploit 2>&1
+    cat "$RECONDIR"/tmp/routersploitscript |routersploit 2>&1 \
+        |sed -r "s/\x1B\[(([0-9]{1,2})?(;)?([0-9]{1,2})?)?[m,K,H,f,J]//g" \
+        > "$RECONDIR"/${TARGET}.routersploit 2>&1
 
     return 0
 }

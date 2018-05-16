@@ -1712,7 +1712,7 @@ function fuzzURLs()
                 if [[ $var =~ user ]] \
                 || [[ $var =~ login ]]
                 then
-                    varuser=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ1
+                    varuser=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ
                 fi
                 if [[ $line =~ (password) ]]
                 then
@@ -1735,7 +1735,7 @@ function fuzzURLs()
                 fi
                 if [[ x$varpass != 'x' ]] 
                 then
-                    echo "$varstring $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw.login
+                    echo "$varuser&$varpass $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw.login
                 fi
                 a_vars=()
                 varuser=''
@@ -1745,8 +1745,29 @@ function fuzzURLs()
     fi
 
     sort -u "$RECONDIR"/tmp/${TARGET}.FUZZ.raw |grep "$TARGET" > "$RECONDIR"/tmp/${TARGET}.FUZZ
+    sort -u "$RECONDIR"/tmp/${TARGET}.FUZZ.raw.login |grep "$TARGET" > "$RECONDIR"/tmp/${TARGET}.FUZZ.login
 
     IFS=$'\n'
+    i=0
+    for line in $(cat "$RECONDIR"/tmp/${TARGET}.FUZZ 2>/dev/null)
+    do
+        IFS=' '
+        post=$(echo $line|awk '{print $1}')
+        url=$(echo $line|awk '{print $2}')
+        wfuzzfile=$(echo ${url//\//,} |cut -d',' -f1-4 |cut -d';' -f1)
+
+        $TIMEOUT 900 \
+            wfuzz -o html --hc 404 -z file,$RECONDIR/tmp/users.lst \
+            -z file,$RECONDIR/tmp/passwds.lst $post "$url" \
+            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.logins.wfuzz.${i}.html 2>&1
+
+        # sometimes timeout command forks badly on exit
+        pkill -t $TTY -f wfuzz
+        let i++
+    done
+
+    IFS=$'\n'
+    i=0
     for line in $(cat "$RECONDIR"/tmp/${TARGET}.FUZZ 2>/dev/null)
     do
         IFS=' '
@@ -1774,11 +1795,6 @@ function fuzzURLs()
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtnix.wfuzz.${i}.html 2>&1
         $TIMEOUT 300 \
             wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt $post "$url" \
-            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.${i}.html 2>&1
-
-        $TIMEOUT 900 \
-            wfuzz -o html --hc 404 -z file,$RECONDIR/tmp/users.lst \
-            -z file,$RECONDIR/tmp/passwds.lst $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.${i}.html 2>&1
 
         # sometimes timeout command forks badly on exit

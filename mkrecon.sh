@@ -70,6 +70,10 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.nmap-oracle-sid-brute"
     echo "... outputs $RECONDIR/${TARGET}.nmap-ipmi-brute"
     otherNmaps &
+
+    echo "starting routersploitScan"
+    echo "... outputs $RECONDIR/${TARGET}.routersploit"
+    routersploitScan &
     
     echo "examining open ports"
     echo "... outputs $RECONDIR/${TARGET}.baseurls"
@@ -744,6 +748,34 @@ function basicEyeWitness()
     screen -dmS ${TARGET}.ew.$RANDOM $TIMEOUT 3600 \
         eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.basicEyeWitness \
         --no-dns --no-prompt --all-protocols -x "$RECONDIR"/${TARGET}.xml
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function routersploitScan()
+{
+    local ports=()
+    local port
+
+    for port in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
+    do
+        if echo $port |egrep -q '[[:digit:]]+/open/tcp/'
+        then
+            ports[${#ports[@]}]=${port%%/*}
+        fi
+    done
+
+    echo "use scanners/autopwn" >"$RECONDIR"/tmp/routersploitscript
+    echo "set target $1" >>"$RECONDIR"/tmp/routersploitscript
+    shift
+    for port in "${ports[@]}"
+    do
+        echo "set port $port" >>"$RECONDIR"/tmp/routersploitscript
+        echo "run" >>"$RECONDIR"/tmp/routersploitscript
+    done
+    cat "$RECONDIR"/tmp/routersploitscript |routersploit > "$RECONDIR"/${TARGET}.routersploit 2>&1
 
     return 0
 }

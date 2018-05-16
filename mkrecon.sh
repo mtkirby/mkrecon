@@ -125,6 +125,15 @@ function MAIN()
             proto="http"
         fi
 
+        # ftp
+        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//ftp/'
+        then
+            echo "starting doHydra $port ftp"
+            echo "... outputs $RECONDIR/${TARGET}.ftp.$port.hydra"
+            doHydra $port ftp /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt &
+            doHydra $port ftp /usr/share/routersploit/routersploit/wordlists/defaults.txt &
+        fi
+    
         # telnet
         if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//telnet'
         then
@@ -617,6 +626,74 @@ function buildEnv()
 ################################################################################
 
 ################################################################################
+function otherNmaps()
+{
+    local a_tcpports=()
+    local a_udpports=()
+    local a_urls=()
+    local port
+    local tcpports
+    local udpports
+    local scanports
+    local sid
+
+    if [[ ! -f "$RECONDIR"/${TARGET}.ngrep ]]
+    then
+        echo "FAILED TO FIND NGREP FILE"
+        return 1
+    fi
+    for port in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
+    do
+        if echo $port |egrep -q '[[:digit:]]+/open/tcp/'
+        then
+            a_tcpports[${#a_tcpports[@]}]=${port%%/*}
+            tcpports="T:$(joinBy , "${a_tcpports[@]}")"
+        fi
+        if echo $port |egrep -q '[[:digit:]]+/open/udp/'
+        then
+            a_udpports[${#a_udpports[@]}]=${port%%/*}
+            udpports="U:$(joinBy , "${a_udpports[@]}")"
+        fi
+        scanports=$(joinBy , $tcpports $udpports)
+    done
+
+    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET |grep -q '|' \
+        || rm -f "$RECONDIR"/${TARGET}.nmap-ajp-brute ) &
+
+    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET |grep -q '|' \
+        || rm -f "$RECONDIR"/${TARGET}.nmap-xmpp-brute ) &
+
+    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET |grep -q '|' 
+        if grep -q '|' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute
+        then
+            for sid in $(awk '/^|/ {print $2}' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute |grep -v oracle-sid-brute)
+            do
+                $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET &
+                $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script oracle-enum-users --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET &
+            done
+        else
+            rm -f "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute 
+        fi
+    ) &
+
+    ( $TIMEOUT 28800 nmap -T3 -Pn -sU --script ipmi-brute -p 623 -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET |grep -q '|' \
+        || rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute ) &
+
+    screen -dmS ${TARGET}.nmap-auth.$RANDOM $TIMEOUT 28800 \
+        nmap -T3 -Pn -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
+
+    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM $TIMEOUT 28800 \
+        nmap -T3 -Pn -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
+
+    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM $TIMEOUT 28800 \
+        nmap -T3 -Pn -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
+    
+
+    return 0
+}    
+################################################################################
+
+################################################################################
 function openvasScan()
 {
     local ovusername='admin'
@@ -781,74 +858,6 @@ function routersploitScan()
 
     return 0
 }
-################################################################################
-
-################################################################################
-function otherNmaps()
-{
-    local a_tcpports=()
-    local a_udpports=()
-    local a_urls=()
-    local port
-    local tcpports
-    local udpports
-    local scanports
-    local sid
-
-    if [[ ! -f "$RECONDIR"/${TARGET}.ngrep ]]
-    then
-        echo "FAILED TO FIND NGREP FILE"
-        return 1
-    fi
-    for port in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
-    do
-        if echo $port |egrep -q '[[:digit:]]+/open/tcp/'
-        then
-            a_tcpports[${#a_tcpports[@]}]=${port%%/*}
-            tcpports="T:$(joinBy , "${a_tcpports[@]}")"
-        fi
-        if echo $port |egrep -q '[[:digit:]]+/open/udp/'
-        then
-            a_udpports[${#a_udpports[@]}]=${port%%/*}
-            udpports="U:$(joinBy , "${a_udpports[@]}")"
-        fi
-        scanports=$(joinBy , $tcpports $udpports)
-    done
-
-    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET |grep -q '|' \
-        || rm -f "$RECONDIR"/${TARGET}.nmap-ajp-brute ) &
-
-    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET |grep -q '|' \
-        || rm -f "$RECONDIR"/${TARGET}.nmap-xmpp-brute ) &
-
-    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET |grep -q '|' \
-        if grep -q '|' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute
-        then
-            for sid in $(awk '/^|/ {print $2}' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute |grep -v oracle-sid-brute)
-            do
-                $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET &
-                $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script oracle-enum-users --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET &
-            done
-        else
-            rm -f "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute 
-        fi
-    ) &
-
-    ( $TIMEOUT 28800 nmap -T3 -Pn -sU --script ipmi-brute -p 623 -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET |grep -q '|' \
-        || rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute ) &
-
-    screen -dmS ${TARGET}.nmap-auth.$RANDOM $TIMEOUT 28800 \
-        nmap -T3 -Pn -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
-
-    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM $TIMEOUT 28800 \
-        nmap -T3 -Pn -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
-
-    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM $TIMEOUT 28800 \
-        nmap -T3 -Pn -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
-    
-
-    return 0
-}    
 ################################################################################
 
 ################################################################################
@@ -1654,6 +1663,8 @@ function fuzzURLs()
     local url
     local var
     local varstring
+    local varuser
+    local varpass
     local wfuzzfile
     local IFS=$'\n'
     local i=0
@@ -1698,6 +1709,15 @@ function fuzzURLs()
             then
                 var=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ
                 a_vars[${#a_vars[@]}]=$var
+                if [[ $var =~ user ]] \
+                || [[ $var =~ login ]]
+                then
+                    varuser=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ1
+                fi
+                if [[ $line =~ (password) ]]
+                then
+                    varpass=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZ2Z
+                fi
                 continue
             fi
         
@@ -1713,7 +1733,13 @@ function fuzzURLs()
                 then
                     echo "$varstring $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw
                 fi
+                if [[ x$varpass != 'x' ]] 
+                then
+                    echo "$varstring $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw.login
+                fi
                 a_vars=()
+                varuser=''
+                varpass=''
             fi
         done
     fi
@@ -1739,12 +1765,22 @@ function fuzzURLs()
         else
             post=''
         fi
-        $TIMEOUT 300 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/sql_inj.txt $post "$url" \
+
+        $TIMEOUT 300 \
+            wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/sql_inj.txt $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.sql.wfuzz.${i}.html 2>&1
-        $TIMEOUT 300 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt $post "$url" \
+        $TIMEOUT 300 \
+            wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtnix.wfuzz.${i}.html 2>&1
-        $TIMEOUT 300 wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt $post "$url" \
+        $TIMEOUT 300 \
+            wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.${i}.html 2>&1
+
+        $TIMEOUT 900 \
+            wfuzz -o html --hc 404 -z file,$RECONDIR/tmp/users.lst \
+            -z file,$RECONDIR/tmp/passwds.lst $post "$url" \
+            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.${i}.html 2>&1
+
         # sometimes timeout command forks badly on exit
         pkill -t $TTY -f wfuzz
         let i++

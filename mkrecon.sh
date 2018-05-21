@@ -1956,7 +1956,7 @@ function fuzzURLs()
             mv -f ${file}.1 ${file} 2>&1
 
         # POST wfuzz does multiline.  This will compact the html so we can use the ignore feature.
-        if egrep -q '^<td>[[:space:]]?[[:digit:]]+L</td>$'
+        if egrep -q '^<td>[[:space:]]?[[:digit:]]+L</td>$' "$file"
         then
             IFS=$'\n'
             inside=0
@@ -1971,17 +1971,18 @@ function fuzzURLs()
                 then
                     row[${#row[@]}]="$line"
                 else
-                    echo "$line"
+                    echo "$line" >> ${file}.tmp
                 fi
                 if [[ $line =~ ^\</tr\> ]]
                 then
                     row[${#row[@]}]="$line"
-                    echo "${row[@]}"
-                    echo ""
+                    echo "${row[@]}" >> ${file}.tmp
+                    echo "" >> ${file}.tmp
                     row=()
                     inside=0
                 fi
             done
+            mv ${file}.tmp ${file} >/dev/null 2>&1
         fi
 
         ignore=$(cat "$file" \

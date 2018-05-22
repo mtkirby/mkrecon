@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180521 Kirby
+# 20180522 Kirby
 
 umask 077
 
@@ -29,6 +29,7 @@ function MAIN()
     local NONSSLPORTS=()
     local UDPPORTS=()
     local sapflag=0
+    local sshflag=0
     local RMIPORTS=()
     local rmiflag=0
     local ciscoflag=0
@@ -195,8 +196,7 @@ function MAIN()
             then
                 echo "starting doHydra $port ftp"
                 echo "... outputs $RECONDIR/${TARGET}.ftp.$port.hydra"
-                doHydra $port ftp /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt &
-                doHydra $port ftp /usr/share/routersploit/routersploit/wordlists/defaults.txt &
+                doHydra $port ftp /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/wordlists/defaults.txt &
             fi
         
             # telnet
@@ -205,8 +205,7 @@ function MAIN()
             then
                 echo "starting doHydra $port telnet"
                 echo "... outputs $RECONDIR/${TARGET}.telnet.$port.hydra"
-                doHydra $port telnet /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt &
-                doHydra $port telnet /usr/share/routersploit/routersploit/wordlists/defaults.txt &
+                doHydra $port telnet /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/wordlists/defaults.txt &
             fi
         
             # ssh
@@ -215,8 +214,8 @@ function MAIN()
             then
                 echo "starting doHydra $port ssh"
                 echo "... outputs $RECONDIR/${TARGET}.ssh.$port.hydra"
-                doHydra $port ssh /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt &
-                doHydra $port ssh /usr/share/routersploit/routersploit/wordlists/defaults.txt &
+                doHydra $port ssh /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/wordlists/defaults.txt &
+                sshflag=1
             fi
         
             # mssql
@@ -259,8 +258,17 @@ function MAIN()
                 passHydra $port vnc /usr/share/seclists/Passwords/Default-Credentials/vnc-betterdefaultpasslist.txt &
             fi
     
+            # rpcinfo
+            if [[ $port == '111' ]] \
+            && [[ $protocol == 'tcp' ]] 
+            then
+                echo "starting rpcinfoScan"
+                echo "... outputs $RECONDIR/${TARGET}.rpcinfo"
+                rpcinfoScan &
+            fi
+        
             # rsh
-            if [[ $protocol == '514' ]] \
+            if [[ $port == '514' ]] \
             && [[ $protocol == 'tcp' ]] 
             then
                 echo "starting rshBrute"
@@ -281,7 +289,7 @@ function MAIN()
             fi
     
             # ipmi
-            if [[ $protocol == '623' ]] \
+            if [[ $port == '623' ]] \
             && [[ $protocol == 'tcp' ]] 
             then
                 echo "starting ipmiScan"
@@ -450,11 +458,18 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.nmap-ipmi-brute"
     otherNmaps &
 
+    if [[ $sshflag == 1 ]]
+    then
+        echo "starting ssh badKeyScan"
+        echo "... outputs $RECONDIR/${TARGET}.ssh.badKeys"
+        badKeyScan &
+    fi
+
     if [[ $sapflag == 1 ]]
     then
-        echo "starting sapScan"
-        echo "... outputs $RECONDIR/${TARGET}.sap"
-        sapScan &
+        echo "starting msfSapScan"
+        echo "... outputs $RECONDIR/${TARGET}.sap.msf"
+        msfSapScan &
     fi
 
     if [[ $rmiflag == 1 ]]
@@ -480,6 +495,14 @@ function MAIN()
 
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
+        echo "starting msfHttpScan"
+        echo "... outputs $RECONDIR/${TARGET}.http.msf"
+        msfHttpScan &
+    
+        echo "starting wigScan"
+        echo "... outputs $RECONDIR/${TARGET}.wig"
+        wigScan &
+    
         echo "starting routersploitScan"
         echo "... outputs $RECONDIR/${TARGET}.routersploit"
         routersploitScan &
@@ -626,7 +649,7 @@ function buildEnv()
 {
     local file
     local pkg
-    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness hydra ike-scan john joomscan jq ldap-utils libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common routersploit rpm rsh-client screen seclists skipfish snmpcheck tnscmd10g wfuzz wget whatweb wpscan xmlstarlet"
+    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hydra ike-scan john joomscan jq ldap-utils libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common routersploit rpcbind rpm rsh-client screen seclists skipfish snmpcheck tnscmd10g wfuzz wget whatweb wig wpscan xmlstarlet"
 
     for pkg in $pkgs
     do
@@ -1266,18 +1289,22 @@ function passHydra()
 {
     local port=$1
     local service=$2
-    local file=$3
+    local file
+    shift
+    shift
 
-    if [[ ! -f "$file" ]]
-    then
-        echo "ERROR in passHydra: file not found: $file"
-        return 1
-    fi
-
-    timeout --kill-after=10 --foreground 28800 hydra -I \
-        -P $file \
-        -u -t 1 -s $port $TARGET $service \
-        >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
+    for file in $*
+    do
+        if [[ -f "$file" ]]
+        then
+            timeout --kill-after=10 --foreground 28800 hydra -I \
+                -P $file \
+                -u -t 1 -s $port $TARGET $service \
+                >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
+        else
+            echo "ERROR in passHydra: file not found: $file"
+        fi
+    done
 
 #    if ! grep -q 'successfully completed' "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
 #    then 
@@ -1293,18 +1320,23 @@ function doHydra()
 {
     local port=$1
     local service=$2
-    local file=$3
+    local file
+    shift
+    shift
 
-    if [[ ! -f "$file" ]]
-    then
-        echo "ERROR in doHydra: file not found: $file"
-        return 1
-    fi
+    for file in $*
+    do
+        if [[ -f "$file" ]]
+        then
+            timeout --kill-after=10 --foreground 28800 hydra -I \
+                -C $file \
+                -u -t 1 -s $port $TARGET $service \
+                >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
+        else
+            echo "ERROR in doHydra: file not found: $file"
+        fi
 
-    timeout --kill-after=10 --foreground 28800 hydra -I \
-        -C $file \
-        -u -t 1 -s $port $TARGET $service \
-        >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
+    done
 
 #    if ! grep -q 'successfully completed' "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
 #    then 
@@ -1743,12 +1775,17 @@ function sqlmapScan()
 {
     local url
 
-    for url in $(grep '?' "$RECONDIR"/${TARGET}.spider 2>/dev/null)
+    for url in $(grep '?' "$RECONDIR"/${TARGET}.spider 2>/dev/null ; awk '/^URL: / {print $2}' "$RECONDIR"/${TARGET}.mech-dump 2>/dev/null)
     do
-        timeout --kill-after=10 --foreground 300 sqlmap --random-agent --batch --flush-session -a -u "$url" 2>&1 \
-            |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed|do you want to skip|\[INFO\] GET parameter .* is dynamic' \
-            |uniq >> "$RECONDIR"/${TARGET}.sqlmap 2>&1
+        echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
+        echo "# TESTING $url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
+        timeout --kill-after=10 --foreground 300 sqlmap --forms --random-agent --batch --flush-session -a -u "$url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
+        echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
     done
+
+    cat "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>/dev/null \
+        |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed|do you want to skip|\[INFO\] GET parameter .* is dynamic|do you want to |^> Y' \
+        |uniq >> "$RECONDIR"/${TARGET}.sqlmap 2>&1
 
     return 0
 }
@@ -2313,12 +2350,62 @@ function rmiScan()
 ################################################################################
 
 ################################################################################
-function sapScan()
+function msfHttpScan()
+{
+    local httpscans=()
+    local msfscan
+    local port
+    local url
+    local ssl
+    local cmdfile="$RECONDIR/tmp/msfHttpScanScript"
+
+    for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
+        -x 'search auxiliary/scanner/http/; exit' \
+        |awk '{print $1}' \
+        |egrep -v  'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass' \
+        )
+    do
+        httpscans[${#httpscans[@]}]=$msfscan
+    done
+
+
+    IFS=$'\n'
+    for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
+    do
+        if [[ $url =~ ^https ]]
+        then
+            ssl='true'
+        else
+            ssl='false'
+        fi
+        port=${url##*:}
+        for msfscan in ${httpscans[@]}
+        do
+            echo "echo '##################################################'" >> "$cmdfile"
+            echo "echo 'TESTING $url'" >> "$cmdfile"
+            echo "use $msfscan" >> "$cmdfile"
+            echo "set RPORT $port" >> "$cmdfile"
+            echo "set RHOSTS $TARGET" >> "$cmdfile"
+            echo "set SSL $ssl" >> "$cmdfile"
+            echo "run" >> "$cmdfile"
+            echo "echo '##################################################'" >> "$cmdfile"
+        done
+    done
+    echo "exit" >> "$cmdfile"
+
+    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.http.msf >/dev/null 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function msfSapScan()
 {
     local sapscans=()
     local msfscan
     local port
-    local cmdfile="$RECONDIR/tmp/sapscanscript"
+    local cmdfile="$RECONDIR/tmp/msfSapScanScript"
 
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/sap/; exit'|grep 'auxiliary/scanner/sap/' \
@@ -2331,24 +2418,28 @@ function sapScan()
     do
         for port in ${SSLPORTS[@]}
         do
+            echo "echo '##################################################'" >> "$cmdfile"
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
             echo "set SSL true" >> "$cmdfile"
             echo "run" >> "$cmdfile"
+            echo "echo '##################################################'" >> "$cmdfile"
         done
         for port in ${NONSSLPORTS[@]}
         do
+            echo "echo '##################################################'" >> "$cmdfile"
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
             echo "set SSL false" >> "$cmdfile"
             echo "run" >> "$cmdfile"
+            echo "echo '##################################################'" >> "$cmdfile"
         done
     done
     echo "exit" >> "$cmdfile"
 
-    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.sap >/dev/null 2>&1
+    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.sap.msf >/dev/null 2>&1
 
     return 0
 }
@@ -2360,13 +2451,10 @@ function juniperScan()
     local msfscan
     local cmdfile="$RECONDIR"/tmp/juniper.msf
 
-    for msfscan in auxiliary/scanner/ssh/juniper_backdoor
-    do
-        echo "use $msfscan" >> "$cmdfile"
-        echo "set RHOST $TARGET" >> "$cmdfile"
-        echo "set RHOSTS $TARGET" >> "$cmdfile"
-        echo "run" >> "$cmdfile"
-    done
+    echo "use auxiliary/scanner/ssh/juniper_backdoor" >> "$cmdfile"
+    echo "set RHOST $TARGET" >> "$cmdfile"
+    echo "set RHOSTS $TARGET" >> "$cmdfile"
+    echo "run" >> "$cmdfile"
     echo "exit" >> "$cmdfile"
 
     /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.juniper >/dev/null 2>&1
@@ -2402,10 +2490,12 @@ function ciscoScan()
         auxiliary/scanner/snmp/cisco_config_tftp \
         auxiliary/scanner/snmp/cisco_upload_file
     do
+        echo "echo '##################################################'" >> "$cmdfile"
         echo "use $msfscan" >> "$cmdfile"
         echo "set RHOST $TARGET" >> "$cmdfile"
         echo "set RHOSTS $TARGET" >> "$cmdfile"
         echo "run" >> "$cmdfile"
+        echo "echo '##################################################'" >> "$cmdfile"
     done
     echo "exit" >> "$cmdfile"
 
@@ -2421,6 +2511,67 @@ function tnscmd10gScan()
     local port=$1
 
     tnscmd10g -h ${TARGET} -p port >"$RECONDIR"/${TARGET}.oracle.tnscmd10g.$port 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function badKeyScan()
+{
+    local yml
+    local key
+    local user
+    local port
+
+    if [[ ! -d /tmp/ssh-badkeys/authorized ]]
+    then
+        git clone https://github.com/rapid7/ssh-badkeys /tmp/ssh-badkeys >/dev/null 2>&1
+    fi
+    if [[ ! -d /tmp/ssh-badkeys/authorized ]]
+    then
+        echo "Unable to git clone ssh-badkeys"
+        return 1
+    fi
+    chmod -R 700 /tmp/ssh-badkeys
+    for yml in /tmp/ssh-badkeys/authorized/*.yml
+    do
+        key=${yml/.yml/}.key
+        port=$(cat $yml |awk '/^:port: / {print $2}')
+        user=$(cat $yml |awk '/^:user: / {print $2}')
+
+        # Run ssh with verbose.  
+        # If it gets to the "Sending command", then key was successful
+        if ssh -o "PasswordAuthentication no" -v -p $port -i $key -l $user $TARGET 'uname' 2>&1|grep -q 'Sending command:'
+        then
+            echo "FOUND KEY WITH $yml" >> $RECONDIR/${TARGET}.ssh.badKeys
+        fi
+    done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function wigScan()
+{
+    local url
+
+    for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
+    do
+        wig -q -a -d $url 2>&1 |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
+            >> "$RECONDIR"/${TARGET}.wig 
+
+    done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function rpcinfoScan()
+{
+    rpcinfo -p $TARGET >"$RECONDIR"/${TARGET}.rpcinfo 2>&1
 
     return 0
 }

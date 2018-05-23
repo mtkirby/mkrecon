@@ -258,15 +258,6 @@ function MAIN()
                 passHydra $port vnc /usr/share/seclists/Passwords/Default-Credentials/vnc-betterdefaultpasslist.txt &
             fi
     
-            # rpcinfo
-            if [[ $port == '111' ]] \
-            && [[ $protocol == 'tcp' ]] 
-            then
-                echo "starting rpcinfoScan"
-                echo "... outputs $RECONDIR/${TARGET}.rpcinfo"
-                rpcinfoScan &
-            fi
-        
             # rsh
             if [[ $port == '514' ]] \
             && [[ $protocol == 'tcp' ]] 
@@ -1769,7 +1760,6 @@ function hydraScanURLs()
 }
 ################################################################################
 
-
 ################################################################################
 function sqlmapScan()
 {
@@ -1779,12 +1769,12 @@ function sqlmapScan()
     do
         echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
         echo "# TESTING $url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
-        timeout --kill-after=10 --foreground 300 sqlmap --forms --random-agent --batch --flush-session -a -u "$url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
+        timeout --kill-after=10 --foreground 300 sqlmap --forms --random-agent --batch --flush-session --threads=10 -a -u "$url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
         echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
     done
 
     cat "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>/dev/null \
-        |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed|do you want to skip|\[INFO\] GET parameter .* is dynamic|do you want to |^> Y' \
+        |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed|do you want to skip|\[INFO\] GET parameter .* is dynamic|do you want to |^> Y|as the CSV results file in multiple targets mode|you can find results of scanning in multiple targets mode|\[ERROR\] all tested parameters do not appear to be injectable' \
         |uniq >> "$RECONDIR"/${TARGET}.sqlmap 2>&1
 
     return 0
@@ -1914,7 +1904,7 @@ function fuzzURLs()
             && [[ ! $line =~ NONAME ]] \
             && [[ $url =~ http ]]
             then
-                if [[ ! $line =~ (submit) ]] 
+                if [[ $line =~ (submit) ]] 
                 then
                     var=$(echo $line |awk '{print $1}'|cut -d'=' -f1)
                 else 
@@ -1988,10 +1978,10 @@ function fuzzURLs()
         url=$(echo $line|awk '{print $2}')
         #url=${url//\&/\\&}
         wfuzzfile=$(echo ${url//\//,} |cut -d',' -f1-4 |cut -d';' -f1)
-        #wfuzzfile=${wfuzzfile// /,}
-        #wfuzzfile=${wfuzzfile//-/_}
-        #wfuzzfile=${wfuzzfile//\"/}
-        #wfuzzfile=${wfuzzfile//\&/_}
+        wfuzzfile=${wfuzzfile// /,}
+        wfuzzfile=${wfuzzfile//-/_}
+        wfuzzfile=${wfuzzfile//\"/}
+        wfuzzfile=${wfuzzfile//\&/_}
 
         if [[ $post == "none" ]]
         then
@@ -2286,6 +2276,7 @@ function memcacheScan()
     echo "use auxiliary/gather/memcached_extractor" > $cmdfile
     echo "set RHOSTS $TARGET" >> $cmdfile
     echo "set RPORT $TARGET" >> $cmdfile
+    echo "set VERBOSE false" >> $cmdfile
     echo "run" >> $cmdfile
     echo "exit" >> $cmdfile
 
@@ -2335,10 +2326,12 @@ function rmiScan()
         echo "use auxiliary/scanner/misc/java_rmi_server" >> "$cmdfile"
         echo "set RPORT $port" >> "$cmdfile"
         echo "set RHOSTS $TARGET" >> "$cmdfile"
+        echo "set VERBOSE false" >> $cmdfile
         echo "run" >> "$cmdfile"
         echo "use auxiliary/gather/java_rmi_registry" >> "$cmdfile"
         echo "set RPORT $port" >> "$cmdfile"
         echo "set RHOSTS $TARGET" >> "$cmdfile"
+        echo "set VERBOSE false" >> $cmdfile
         echo "run" >> "$cmdfile"
     done
     echo "exit" >> "$cmdfile"
@@ -2362,7 +2355,7 @@ function msfHttpScan()
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/http/; exit' \
         |awk '{print $1}' \
-        |egrep -v  'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass' \
+        |egrep -v  'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass|http/xpath' \
         )
     do
         httpscans[${#httpscans[@]}]=$msfscan
@@ -2381,14 +2374,17 @@ function msfHttpScan()
         port=${url##*:}
         for msfscan in ${httpscans[@]}
         do
-            echo "echo '##################################################'" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
             echo "echo 'TESTING $url'" >> "$cmdfile"
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
             echo "set SSL $ssl" >> "$cmdfile"
+            echo "set VERBOSE false" >> $cmdfile
             echo "run" >> "$cmdfile"
-            echo "echo '##################################################'" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
         done
     done
     echo "exit" >> "$cmdfile"
@@ -2418,23 +2414,29 @@ function msfSapScan()
     do
         for port in ${SSLPORTS[@]}
         do
-            echo "echo '##################################################'" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
             echo "set SSL true" >> "$cmdfile"
+            echo "set VERBOSE false" >> $cmdfile
             echo "run" >> "$cmdfile"
-            echo "echo '##################################################'" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
         done
         for port in ${NONSSLPORTS[@]}
         do
-            echo "echo '##################################################'" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
             echo "set SSL false" >> "$cmdfile"
+            echo "set VERBOSE false" >> $cmdfile
             echo "run" >> "$cmdfile"
-            echo "echo '##################################################'" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER" >> "$cmdfile"
         done
     done
     echo "exit" >> "$cmdfile"
@@ -2454,6 +2456,7 @@ function juniperScan()
     echo "use auxiliary/scanner/ssh/juniper_backdoor" >> "$cmdfile"
     echo "set RHOST $TARGET" >> "$cmdfile"
     echo "set RHOSTS $TARGET" >> "$cmdfile"
+    echo "set VERBOSE false" >> $cmdfile
     echo "run" >> "$cmdfile"
     echo "exit" >> "$cmdfile"
 
@@ -2490,12 +2493,15 @@ function ciscoScan()
         auxiliary/scanner/snmp/cisco_config_tftp \
         auxiliary/scanner/snmp/cisco_upload_file
     do
-        echo "echo '##################################################'" >> "$cmdfile"
+        echo "echo $BORDER" >> "$cmdfile"
+        echo "echo $BORDER" >> "$cmdfile"
         echo "use $msfscan" >> "$cmdfile"
         echo "set RHOST $TARGET" >> "$cmdfile"
         echo "set RHOSTS $TARGET" >> "$cmdfile"
+        echo "set VERBOSE false" >> $cmdfile
         echo "run" >> "$cmdfile"
-        echo "echo '##################################################'" >> "$cmdfile"
+        echo "echo $BORDER" >> "$cmdfile"
+        echo "echo $BORDER" >> "$cmdfile"
     done
     echo "exit" >> "$cmdfile"
 
@@ -2563,15 +2569,6 @@ function wigScan()
             >> "$RECONDIR"/${TARGET}.wig 
 
     done
-
-    return 0
-}
-################################################################################
-
-################################################################################
-function rpcinfoScan()
-{
-    rpcinfo -p $TARGET >"$RECONDIR"/${TARGET}.rpcinfo 2>&1
 
     return 0
 }

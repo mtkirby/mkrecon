@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180522 Kirby
+# 20180523 Kirby
 
 umask 077
 
@@ -693,18 +693,30 @@ function buildEnv()
     # prep default usernames/passwords
     mkdir -p "$RECONDIR"/tmp >/dev/null 2>&1
     if [[ ! -f "$RECONDIR"/tmp/users.lst ]] \
-    || [[ ! -f "$RECONDIR"/tmp/passwds.lst ]]
+    || [[ ! -f "$RECONDIR"/tmp/passwds.lst ]] \
+    || [[ ! -f "$RECONDIR"/tmp/userpass.lst ]]
     then
         rm -f "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp >/dev/null 2>&1
 
         cat /usr/share/wordlists/metasploit/http_default_users.txt \
             /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt \
             /usr/share/seclists/Usernames/top-usernames-shortlist.txt \
+            /usr/share/wordlists/metasploit/idrac_default_user.txt \
             >> "$RECONDIR"/tmp/users.tmp 
+
         cat /usr/share/seclists/Passwords/Common-Credentials/best110.txt \
             /usr/share/seclists/Passwords/Common-Credentials/top-20-common-SSH-passwords.txt \
             /usr/share/seclists/Passwords/Common-Credentials/top-shortlist.txt \
             /usr/share/wordlists/metasploit/idrac_default_pass.txt \
+            /usr/share/wordlists/metasploit/adobe_top100_pass.txt \
+            /usr/share/wordlists/metasploit/db2_default_pass.txt \
+            /usr/share/wordlists/metasploit/default_pass_for_services_unhash.txt \
+            /usr/share/wordlists/metasploit/hci_oracle_passwords.csv \
+            /usr/share/wordlists/metasploit/http_default_pass.txt \
+            /usr/share/wordlists/metasploit/mirai_pass.txt \
+            /usr/share/wordlists/metasploit/multi_vendor_cctv_dvr_pass.txt \
+            /usr/share/wordlists/metasploit/postgres_default_pass.txt \
+            /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt \
             >> "$RECONDIR"/tmp/passwds.tmp
 
         # add extra passwords
@@ -717,8 +729,21 @@ function buildEnv()
         echo "nimda" >> "$RECONDIR"/tmp/passwds.tmp
         echo "admin1" >> "$RECONDIR"/tmp/passwds.tmp
 
-        cat "$RECONDIR"/tmp/users.tmp |dos2unix |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/users.lst
-        cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp |dos2unix |sed -e 's/ //g' |sort -u > "$RECONDIR"/tmp/passwds.lst
+        cat "$RECONDIR"/tmp/users.tmp \
+            |dos2unix |sed -e 's/ //g' |sort -u \
+            > "$RECONDIR"/tmp/users.lst
+
+        cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp \
+            |dos2unix |sed -e 's/ //g' |sort -u \
+            > "$RECONDIR"/tmp/passwds.lst
+
+        cat /usr/share/wordlists/metasploit/*userpass*txt \
+            /usr/share/routersploit/routersploit/wordlists/defaults.txt \
+            |sed -e 's/ /:/g' \
+            |egrep -v '^:' \
+            |sort -u \
+            > "$RECONDIR"/tmp/userpass.lst
+
     fi
 
     rm -f "$RECONDIR"/tmp/mkrecon.txt >/dev/null 2>&1
@@ -915,6 +940,7 @@ function snmpScan()
         /usr/share/nmap/nselib/data/snmpcommunities.lst \
         /usr/share/seclists/Discovery/SNMP/snmp.txt \
         /usr/share/routersploit/routersploit/wordlists/snmp.txt \
+        /usr/share/wordlists/metasploit/snmp_default_pass.txt \
         |egrep -v '^#'|sort -u )
     do
         echo "snmp-check -c '$community' $IP 2>&1 \
@@ -1609,9 +1635,13 @@ function webDiscover()
             >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
     done
 
-    cat "$RECONDIR"/tmp/${TARGET}.spider.raw "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null \
+    cat "$RECONDIR"/tmp/${TARGET}.spider.raw \
+        "$RECONDIR"/tmp/${TARGET}.robotspider.raw \
+        2>/dev/null \
         |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |sort -u \
+        |sed -e "s|$TARGET//|$TARGET/|g" \
         > "$RECONDIR"/${TARGET}.spider
+
     for url in $(cat "$RECONDIR"/${TARGET}.spider|sort -u)
     do
         urlfile=${url//\//,}
@@ -1742,11 +1772,11 @@ function hydraScanURLs()
             -u -t 3 $sslflag -s $port $TARGET http-get "$path" \
             >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
 
-        # Test with default creds from routersploit
+        # Test with default creds from routersploit and metasploit
         echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
         echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
         timeout --kill-after=10 --foreground 900 hydra -I \
-            -C /usr/share/routersploit/routersploit/wordlists/defaults.txt \
+            -C "$RECONDIR"/tmp/userpass.lst \
             -u -t 3 $sslflag -s $port $TARGET http-get "$path" \
             >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
 
@@ -1769,13 +1799,18 @@ function sqlmapScan()
     do
         echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
         echo "# TESTING $url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
-        timeout --kill-after=10 --foreground 300 sqlmap --forms --random-agent --batch --flush-session --threads=10 -a -u "$url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
+        timeout --kill-after=10 --foreground 300 \
+            sqlmap --forms --random-agent --batch --flush-session -o --threads=5 -a --technique=BEUSQ -u "$url" \
+            | tail -n +7 \
+            | strings -a \
+            >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
         echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
-    done
 
-    cat "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>/dev/null \
-        |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed|do you want to skip|\[INFO\] GET parameter .* is dynamic|do you want to |^> Y|as the CSV results file in multiple targets mode|you can find results of scanning in multiple targets mode|\[ERROR\] all tested parameters do not appear to be injectable' \
-        |uniq >> "$RECONDIR"/${TARGET}.sqlmap 2>&1
+        # Update $TARGET.sqlmap each round in case we go over time limit and die
+        cat "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>/dev/null \
+            |egrep -v '\[INFO\] (testing|checking|target|flushing|heuristics|confirming|searching|dynamic|URI parameter)|\[WARNING\]|\[CRITICAL\]|shutting down|starting at|do you want to try|legal disclaimer:|404 \(Not Found\)|how do you want to proceed|it is not recommended|do you want sqlmap to try|^\|_|^ ___|^      \||^       __H|^        ___|fetched random HTTP User-Agent|there was an error checking|Do you want to follow|Do you want to try|Method Not Allowed|do you want to skip|\[INFO\] GET parameter .* is dynamic|do you want to |^> Y|as the CSV results file in multiple targets mode|you can find results of scanning in multiple targets mode|\[ERROR\] all tested parameters do not appear to be injectable' \
+            |uniq > "$RECONDIR"/${TARGET}.sqlmap 2>&1
+    done
 
     return 0
 }
@@ -1791,7 +1826,10 @@ function webWords()
         timeout --kill-after=10 --foreground 1800 wget -rq -D $TARGET -O "$RECONDIR"/tmp/wget.dump "$url" >/dev/null 2>&1
         if [[ -f "$RECONDIR"/tmp/wget.dump ]]
         then
-            html2dic "$RECONDIR"/tmp/wget.dump 2>/dev/null |grep -v -P '[^\x00-\x7f]' |sort -u \
+            html2dic "$RECONDIR"/tmp/wget.dump 2>/dev/null \
+                |grep -v -P '[^\x00-\x7f]' \
+                |egrep -E '....' \
+                |sort -u \
                 >> "$RECONDIR"/tmp/${TARGET}.webwords 
             rm -f "$RECONDIR"/tmp/wget.dump >/dev/null 2>&1
         fi
@@ -2249,7 +2287,9 @@ function scanURLs()
         echo "Running joomscan on $url"
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
-        timeout --kill-after=10 --foreground 900 joomscan -pe -u "$url" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
+        timeout --kill-after=10 --foreground 900 joomscan -pe -u "$url" \
+            |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
+            >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
     done
 
     # run fimap on anything with php
@@ -2275,6 +2315,7 @@ function memcacheScan()
 
     echo "use auxiliary/gather/memcached_extractor" > $cmdfile
     echo "set RHOSTS $TARGET" >> $cmdfile
+    echo "set RHOST $TARGET" >> $cmdfile
     echo "set RPORT $TARGET" >> $cmdfile
     echo "set VERBOSE false" >> $cmdfile
     echo "run" >> $cmdfile
@@ -2297,6 +2338,7 @@ function ipmiScan()
 
     echo "use auxiliary/scanner/ipmi/ipmi_dumphashes" > $cmdfile
     echo "set RHOSTS $TARGET" >> $cmdfile
+    echo "set RHOST $TARGET" >> $cmdfile
     echo "set OUTPUT_HASHCAT_FILE $RECONDIR/${TARGET}.ipmi.hashcat" >> $cmdfile
     echo "set OUTPUT_JOHN_FILE $RECONDIR/${TARGET}.ipmi.john" >> $cmdfile
     echo "run" >> $cmdfile
@@ -2326,11 +2368,13 @@ function rmiScan()
         echo "use auxiliary/scanner/misc/java_rmi_server" >> "$cmdfile"
         echo "set RPORT $port" >> "$cmdfile"
         echo "set RHOSTS $TARGET" >> "$cmdfile"
+        echo "set RHOST $TARGET" >> $cmdfile
         echo "set VERBOSE false" >> $cmdfile
         echo "run" >> "$cmdfile"
         echo "use auxiliary/gather/java_rmi_registry" >> "$cmdfile"
         echo "set RPORT $port" >> "$cmdfile"
         echo "set RHOSTS $TARGET" >> "$cmdfile"
+        echo "set RHOST $TARGET" >> $cmdfile
         echo "set VERBOSE false" >> $cmdfile
         echo "run" >> "$cmdfile"
     done
@@ -2355,7 +2399,8 @@ function msfHttpScan()
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/http/; exit' \
         |awk '{print $1}' \
-        |egrep -v  'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass|http/xpath' \
+        |grep 'auxiliary/scanner/http/'
+        |egrep -v 'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass|http/xpath' \
         )
     do
         httpscans[${#httpscans[@]}]=$msfscan
@@ -2380,6 +2425,7 @@ function msfHttpScan()
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
+            echo "set RHOST $TARGET" >> $cmdfile
             echo "set SSL $ssl" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
             echo "run" >> "$cmdfile"
@@ -2419,6 +2465,7 @@ function msfSapScan()
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
+            echo "set RHOST $TARGET" >> $cmdfile
             echo "set SSL true" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
             echo "run" >> "$cmdfile"
@@ -2432,6 +2479,7 @@ function msfSapScan()
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
+            echo "set RHOST $TARGET" >> $cmdfile
             echo "set SSL false" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
             echo "run" >> "$cmdfile"
@@ -2536,7 +2584,7 @@ function badKeyScan()
     fi
     if [[ ! -d /tmp/ssh-badkeys/authorized ]]
     then
-        echo "Unable to git clone ssh-badkeys"
+        echo "FAILED TO GIT CLONE ssh-badkeys"
         return 1
     fi
     chmod -R 700 /tmp/ssh-badkeys
@@ -2565,8 +2613,11 @@ function wigScan()
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
+        echo "Testing $url" >> "$RECONDIR"/${TARGET}.wig 
         wig -q -a -d $url 2>&1 |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             >> "$RECONDIR"/${TARGET}.wig 
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
 
     done
 

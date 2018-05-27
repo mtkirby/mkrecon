@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180526 Kirby
+# 20180527 Kirby
 
 umask 077
 
@@ -2704,7 +2704,7 @@ function badKeyScan()
 function crackers()
 {
     screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack \
-        $TIMEOUT 28800 \
+        timeout --kill-after=10 --foreground 28800 \
         ncrack -iN "$RECONDIR"/${TARGET}.nmap -U "$RECONDIR"/tmp/users.lst \
         -P "$RECONDIR"/tmp/passwds.lst -v -g CL=2,cr=5,to=8h
 

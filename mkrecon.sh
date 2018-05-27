@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180524 Kirby
+# 20180526 Kirby
 
 umask 077
 
@@ -488,6 +488,10 @@ function MAIN()
 
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
+        echo "starting WAScan"
+        echo "... outputs $RECONDIR/${TARGET}.\$port.WAScan"
+        WAScan &
+
         echo "starting msfHttpScan"
         echo "... outputs $RECONDIR/${TARGET}.http.msf"
         msfHttpScan &
@@ -504,9 +508,10 @@ function MAIN()
         echo "... outputs $RECONDIR/${TARGET}:\$port.nikto"
         niktoScan &
 
-        echo "starting webWords"
-        echo "... outputs $RECONDIR/${TARGET}.webwords"
-        webWords 
+        # Enable when trying harder...
+        #echo "starting webWords"
+        #echo "... outputs $RECONDIR/${TARGET}.webwords"
+        #webWords 
 
         echo "starting webDiscover"
         echo "... outputs $RECONDIR/${TARGET}.robots.txt"
@@ -579,10 +584,10 @@ function MAIN()
     jobscount=0
     while jobs |grep -q Running
     do
-        echo "Jobs are still running.  Waiting... $jobscount out of 240 minutes"
+        echo "Jobs are still running.  Waiting... $jobscount out of 480 minutes"
         jobs -l
         (( jobscount++ ))
-        if [[ "$jobscount" -ge 240 ]]
+        if [[ "$jobscount" -ge 480 ]]
         then
             echo "killing jobs"
             killHangs
@@ -639,7 +644,7 @@ function buildEnv()
 {
     local file
     local pkg
-    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hydra ike-scan john joomscan jq ldap-utils libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common routersploit rpcbind rpm rsh-client screen seclists skipfish snmpcheck tnscmd10g wfuzz wget whatweb wig wpscan xmlstarlet"
+    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hydra ike-scan john joomscan jq ldap-utils libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client screen seclists skipfish snmpcheck tnscmd10g wfuzz wget whatweb wig wpscan xmlstarlet"
 
     for pkg in $pkgs
     do
@@ -1831,8 +1836,9 @@ function sqlmapScan()
         echo "# TESTING $url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw
         timeout --kill-after=10 --foreground 300 \
             sqlmap --forms --random-agent --batch --flush-session -o --threads=5 -a --technique=BEUSQ -u "$url" 2>&1 \
-            | tail -n +7 \
-            | strings -a \
+            |tail -n +7 \
+            |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
+            |strings -a \
             >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 
         echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 
 
@@ -2334,7 +2340,7 @@ function scanURLs()
         echo "... outputs $RECONDIR/$TARGET.joomscan"
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.joomscan
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.joomscan
-        timeout --kill-after=10 --foreground 900 joomscan -pe -u "$url" \
+        timeout --kill-after=10 --foreground 900 joomscan -ec -r -u "$url" \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
     done
@@ -2622,6 +2628,43 @@ function tnscmd10gScan()
 ################################################################################
 
 ################################################################################
+function WAScan()
+{
+    local url
+    local scan
+    local port
+
+    if [[ ! -d /tmp/WAScan ]]
+    then
+        git clone https://github.com/m4ll0k/WAScan /tmp/WAScan >/dev/null 2>&1
+    fi
+
+    if [[ ! -f /tmp/WAScan/wascan.py ]]
+    then
+        echo "FAILED TO GIT CLONE WAScan"
+        return 1
+    fi
+
+    chmod -R 700 /tmp/WAScan
+
+    pip install -r /tmp/WAScan/requirements.txt >/dev/null 2>&1
+
+    for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
+    do
+        port=${url##*:}
+        echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.$port.WAScan
+        timeout --kill-after=10 --foreground 14400 /tmp/WAScan/wascan.py -n -r --url "$url" 2>&1 \
+            |tail -n +11 \
+            |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
+            |uniq \
+            >> "$RECONDIR"/${TARGET}.$port.WAScan &
+    done
+
+    return 0
+}
+################################################################################
+
+################################################################################
 function badKeyScan()
 {
     local yml
@@ -2661,13 +2704,15 @@ function badKeyScan()
 function crackers()
 {
     screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack \
-        timeout --kill-after=10 --foreground 28900 \
+        $TIMEOUT 28800 \
         ncrack -iN "$RECONDIR"/${TARGET}.nmap -U "$RECONDIR"/tmp/users.lst \
         -P "$RECONDIR"/tmp/passwds.lst -v -g CL=2,cr=5,to=8h
 
-    screen -dmS ${TARGET}.brutespray.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.brutespray \
-        timeout --kill-after=10 --foreground 28900 \
-        brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c
+    # brutespray uses service-specific wordlists in /usr/share/brutespray/wordlist
+    timeout --kill-after=10 --foreground 28800 \
+        brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c 2>&1 \
+        |tail -n +38 |grep -v 'ACCOUNT CHECK: ' \
+        >> "$RECONDIR"/${TARGET}.brutespray &
 
     return 0
 }

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180527 Kirby
+# 20180531 Kirby
 
 umask 077
 
@@ -63,7 +63,7 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.ngrep"
     echo "... outputs $RECONDIR/${TARGET}.xml"
     nmapScan
-    if ! grep -q 'Ports: ' "$RECONDIR"/${TARGET}.ngrep 2>/dev/null
+    if ! egrep -q 'Ports: .*/open/' "$RECONDIR"/${TARGET}.ngrep 2>/dev/null
     then
         echo "FAILED: no ports found"
         exit 1
@@ -162,7 +162,8 @@ function MAIN()
             # sometimes nmap can't identify a web service, so just try anyways
             if [[ $protocol == 'tcp' ]] \
             && echo "... testing $port for http with wget" \
-            && timeout --kill-after=10 --foreground 30 wget --tries=2 -O /dev/null --no-check-certificate -S  -D $TARGET \
+            && timeout --kill-after=10 --foreground 30 \
+                wget --tries=2 -O /dev/null --no-check-certificate -S  -D $TARGET \
                 --method=HEAD http://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
             && ! grep -q "http://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
             then
@@ -170,7 +171,8 @@ function MAIN()
             fi
             if [[ $protocol == 'tcp' ]] \
             && echo "... testing $port for https with wget" \
-            && timeout --kill-after=10 --foreground 30 wget --tries=2 -O /dev/null --no-check-certificate -S  -D $TARGET \
+            && timeout --kill-after=10 --foreground 30 \
+                wget --tries=2 -O /dev/null --no-check-certificate -S  -D $TARGET \
                 --method=HEAD https://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
             && ! grep -q "https://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
             then
@@ -1839,6 +1841,7 @@ function sqlmapScan()
             |tail -n +7 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
+            |egrep -v '^\[\?|\[.*;'
             >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 
         echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 
 
@@ -2420,18 +2423,21 @@ function rmiScan()
 
     for port in ${RMIPORTS[@]}
     do
+        echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
         echo "use auxiliary/scanner/misc/java_rmi_server" >> "$cmdfile"
         echo "set RPORT $port" >> "$cmdfile"
         echo "set RHOSTS $TARGET" >> "$cmdfile"
         echo "set RHOST $TARGET" >> $cmdfile
         echo "set VERBOSE false" >> $cmdfile
         echo "run" >> "$cmdfile"
+        echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
         echo "use auxiliary/gather/java_rmi_registry" >> "$cmdfile"
         echo "set RPORT $port" >> "$cmdfile"
         echo "set RHOSTS $TARGET" >> "$cmdfile"
         echo "set RHOST $TARGET" >> $cmdfile
         echo "set VERBOSE false" >> $cmdfile
         echo "run" >> "$cmdfile"
+        echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
     done
     echo "exit" >> "$cmdfile"
 
@@ -2474,8 +2480,7 @@ function msfHttpScan()
         port=${url##*:}
         for msfscan in ${httpscans[@]}
         do
-            echo "echo $BORDER" >> "$cmdfile"
-            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
             echo "echo 'TESTING $url'" >> "$cmdfile"
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
@@ -2484,8 +2489,7 @@ function msfHttpScan()
             echo "set SSL $ssl" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
             echo "run" >> "$cmdfile"
-            echo "echo $BORDER" >> "$cmdfile"
-            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
         done
     done
     echo "exit" >> "$cmdfile"
@@ -2515,8 +2519,7 @@ function msfSapScan()
     do
         for port in ${SSLPORTS[@]}
         do
-            echo "echo $BORDER" >> "$cmdfile"
-            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
@@ -2524,13 +2527,11 @@ function msfSapScan()
             echo "set SSL true" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
             echo "run" >> "$cmdfile"
-            echo "echo $BORDER" >> "$cmdfile"
-            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
         done
         for port in ${NONSSLPORTS[@]}
         do
-            echo "echo $BORDER" >> "$cmdfile"
-            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
@@ -2538,8 +2539,7 @@ function msfSapScan()
             echo "set SSL false" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
             echo "run" >> "$cmdfile"
-            echo "echo $BORDER" >> "$cmdfile"
-            echo "echo $BORDER" >> "$cmdfile"
+            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
         done
     done
     echo "exit" >> "$cmdfile"
@@ -2596,15 +2596,13 @@ function ciscoScan()
         auxiliary/scanner/snmp/cisco_config_tftp \
         auxiliary/scanner/snmp/cisco_upload_file
     do
-        echo "echo $BORDER" >> "$cmdfile"
-        echo "echo $BORDER" >> "$cmdfile"
+        echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
         echo "use $msfscan" >> "$cmdfile"
         echo "set RHOST $TARGET" >> "$cmdfile"
         echo "set RHOSTS $TARGET" >> "$cmdfile"
         echo "set VERBOSE false" >> $cmdfile
         echo "run" >> "$cmdfile"
-        echo "echo $BORDER" >> "$cmdfile"
-        echo "echo $BORDER" >> "$cmdfile"
+        echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
     done
     echo "exit" >> "$cmdfile"
 
@@ -2690,7 +2688,7 @@ function badKeyScan()
 
         # Run ssh with verbose.  
         # If it gets to the "Sending command", then key was successful
-        if timeout --kill-after=10 --foreground 90 ssh -o "PasswordAuthentication no" -v -p $port -i $key -l $user $TARGET 'uname' 2>&1|grep -q 'Sending command:'
+        if timeout --kill-after=10 --foreground 90 ssh -o PasswordAuthentication=no -o BatchMode=yes -v -p $port -i $key -l $user $TARGET 'uname' 2>&1|grep -q 'Sending command:'
         then
             echo "FOUND KEY WITH $yml" >> $RECONDIR/${TARGET}.ssh.badKeys
         fi
@@ -2752,6 +2750,7 @@ function defaultCreds()
 set > /tmp/set1
 
 export PYTHONHTTPSVERIFY=0
+export PERL_LWP_SSL_VERIFY_HOSTNAME=0
 shopt -s nocasematch
 
 MAIN $*

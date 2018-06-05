@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180531 Kirby
+# 20180604 Kirby
 
 umask 077
 
@@ -8,32 +8,38 @@ function MAIN()
 { 
     #set -x
 
+    local ciscoflag=0
+    local d
+    local fields
+    local FTPPORTS=()
+    local hpflag=0
     local job
     local jobscount
-    local port
-    local rawport
-    local proto
-    local ssl
-    local line
-    local fields
-    local portinfo=()
-    local d
-    local state
-    local protocol
-    local owner
-    local service
-    local rpc_info
-    local version
-    local TCPPORTS=()
-    local SSLPORTS=()
-    local NONSSLPORTS=()
-    local UDPPORTS=()
-    local sapflag=0
-    local sshflag=0
-    local RMIPORTS=()
-    local rmiflag=0
-    local ciscoflag=0
     local juniperflag=0
+    local line
+    local HTTPPORTS=()
+    local HTTPSPORTS=()
+    local NONSSLPORTS=()
+    local owner
+    local port
+    local portinfo=()
+    local proto
+    local protocol
+    local rawport
+    local rmiflag=0
+    local RMIPORTS=()
+    local rpc_info
+    local sapflag=0
+    local service
+    local sshflag=0
+    local ssl
+    local SSHPORTS=()
+    local SSLPORTS=()
+    local state
+    local TCPPORTS=()
+    local TELNETPORTS=()
+    local UDPPORTS=()
+    local version
     
     export TARGET=$1 
     export RECONDIR="${HOME}/mkrecon/${TARGET}"
@@ -147,16 +153,29 @@ function MAIN()
                 juniperflag=1
             fi
         
+            if [[ $version =~ HP.System ]]
+            then
+                hpflag=1
+            fi
+        
             # web
             if [[ $protocol == 'tcp' ]] \
             && [[ $service == 'http' ]]
             then
                 echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+                if portcheck $port ${HTTPPORTS[@]}
+                then
+                    HTTPPORTS[${#HTTPPORTS[@]}]=$port
+                fi
             fi
             if [[ $protocol == 'tcp' ]] \
             && [[ $service =~ ssl.http ]]
             then
                 echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+                if portcheck $port ${HTTPSPORTS[@]}
+                then
+                    HTTPSPORTS[${#HTTPSPORTS[@]}]=$port
+                fi
             fi
     
             # sometimes nmap can't identify a web service, so just try anyways
@@ -168,6 +187,10 @@ function MAIN()
             && ! grep -q "http://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
             then
                 echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+                if portcheck $port ${HTTPPORTS[@]}
+                then
+                    HTTPPORTS[${#HTTPPORTS[@]}]=$port
+                fi
             fi
             if [[ $protocol == 'tcp' ]] \
             && echo "... testing $port for https with wget" \
@@ -177,6 +200,10 @@ function MAIN()
             && ! grep -q "https://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
             then
                 echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
+                if portcheck $port ${HTTPSPORTS[@]}
+                then
+                    HTTPSPORTS[${#HTTPSPORTS[@]}]=$port
+                fi
             fi
     
             # check for SSL/TLS
@@ -200,27 +227,30 @@ function MAIN()
             if [[ $protocol == 'tcp' ]] \
             && [[ $service == 'ftp' ]]
             then
+                FTPPORTS[${#FTPPORTS[@]}]=$port
                 echo "starting doHydra $port ftp"
                 echo "... outputs $RECONDIR/${TARGET}.ftp.$port.hydra"
-                doHydra $port ftp /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/wordlists/defaults.txt &
+                doHydra $port ftp /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt &
             fi
         
             # telnet
             if [[ $protocol == 'tcp' ]] \
             && [[ $service == 'telnet' ]]
             then
+                TELNETPORTS[${#TELNETPORTS[@]}]=$port
                 echo "starting doHydra $port telnet"
                 echo "... outputs $RECONDIR/${TARGET}.telnet.$port.hydra"
-                doHydra $port telnet /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/wordlists/defaults.txt &
+                doHydra $port telnet /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt &
             fi
         
             # ssh
             if [[ $protocol == 'tcp' ]] \
             && [[ $service == 'ssh' ]]
             then
+                SSHPORTS[${#SSHPORTS[@]}]=$port
                 echo "starting doHydra $port ssh"
                 echo "... outputs $RECONDIR/${TARGET}.ssh.$port.hydra"
-                doHydra $port ssh /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/wordlists/defaults.txt &
+                doHydra $port ssh /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt &
                 sshflag=1
             fi
         
@@ -460,8 +490,17 @@ function MAIN()
         badKeyScan &
     fi
 
+    if [[ $hpflag == 1 ]]
+    then
+        # separate HP scan from other http scans because of time
+        echo "starting msfHPScan"
+        echo "... outputs $RECONDIR/${TARGET}.hp.msf"
+        msfHPScan &
+    fi
+
     if [[ $sapflag == 1 ]]
     then
+        # separate SAP scan from other http scans because of time
         echo "starting msfSapScan"
         echo "... outputs $RECONDIR/${TARGET}.sap.msf"
         msfSapScan &
@@ -469,23 +508,23 @@ function MAIN()
 
     if [[ $rmiflag == 1 ]]
     then
-        echo "starting rmiScan"
-        echo "... outputs $RECONDIR/${TARGET}.rmi"
-        rmiScan &
+        echo "starting msfRMIScan"
+        echo "... outputs $RECONDIR/${TARGET}.rmi.msf"
+        msfRMIScan &
     fi
 
     if [[ $ciscoflag == 1 ]]
     then
-        echo "starting ciscoScan"
-        echo "... outputs $RECONDIR/${TARGET}.cisco"
-        ciscoScan &
+        echo "starting msfCiscoScan"
+        echo "... outputs $RECONDIR/${TARGET}.cisco.msf"
+        msfCiscoScan &
     fi
 
     if [[ $juniperflag == 1 ]]
     then
-        echo "starting juniperScan"
-        echo "... outputs $RECONDIR/${TARGET}.juniper"
-        juniperScan &
+        echo "starting msfJuniperScan"
+        echo "... outputs $RECONDIR/${TARGET}.juniper.msf"
+        msfJuniperScan &
     fi
 
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
@@ -696,63 +735,70 @@ function buildEnv()
         return 1
     fi
 
-    # prep default usernames/passwords
     mkdir -p "$RECONDIR"/tmp >/dev/null 2>&1
-    if [[ ! -f "$RECONDIR"/tmp/users.lst ]] \
-    || [[ ! -f "$RECONDIR"/tmp/passwds.lst ]] \
-    || [[ ! -f "$RECONDIR"/tmp/userpass.lst ]]
-    then
-        rm -f "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp >/dev/null 2>&1
 
-        cat /usr/share/wordlists/metasploit/http_default_users.txt \
-            /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt \
-            /usr/share/seclists/Usernames/top-usernames-shortlist.txt \
-            /usr/share/wordlists/metasploit/idrac_default_user.txt \
-            /usr/share/wordlists/metasploit/http_default_users.txt \
-            >> "$RECONDIR"/tmp/users.tmp 
+    # prep default usernames/passwords
+    cat /usr/share/wordlists/metasploit/http_default_users.txt \
+        /usr/share/wordlists/metasploit/tomcat_mgr_default_users.txt \
+        /usr/share/seclists/Usernames/top-usernames-shortlist.txt \
+        /usr/share/wordlists/metasploit/idrac_default_user.txt \
+        /usr/share/wordlists/metasploit/http_default_users.txt \
+        >> "$RECONDIR"/tmp/users.tmp 
 
-        cat /usr/share/seclists/Passwords/Common-Credentials/best110.txt \
-            /usr/share/seclists/Passwords/Common-Credentials/top-20-common-SSH-passwords.txt \
-            /usr/share/seclists/Passwords/Common-Credentials/top-shortlist.txt \
-            /usr/share/wordlists/metasploit/idrac_default_pass.txt \
-            /usr/share/wordlists/metasploit/adobe_top100_pass.txt \
-            /usr/share/wordlists/metasploit/db2_default_pass.txt \
-            /usr/share/wordlists/metasploit/default_pass_for_services_unhash.txt \
-            /usr/share/wordlists/metasploit/http_default_pass.txt \
-            /usr/share/wordlists/metasploit/mirai_pass.txt \
-            /usr/share/wordlists/metasploit/multi_vendor_cctv_dvr_pass.txt \
-            /usr/share/wordlists/metasploit/postgres_default_pass.txt \
-            /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt \
-            >> "$RECONDIR"/tmp/passwds.tmp
+    # add extra users
+    echo "toor" >> "$RECONDIR"/tmp/users.tmp
 
-        # add extra passwords
-        echo "adminadmin" >> "$RECONDIR"/tmp/passwds.tmp
-        echo "changethis" >> "$RECONDIR"/tmp/passwds.tmp
-        echo "changeme" >> "$RECONDIR"/tmp/passwds.tmp
-        echo "j5Brn9" >> "$RECONDIR"/tmp/passwds.tmp
-        echo "UNKNOWN" >> "$RECONDIR"/tmp/passwds.tmp
-        echo "Password" >> "$RECONDIR"/tmp/passwds.tmp
-        echo "nimda" >> "$RECONDIR"/tmp/passwds.tmp
-        echo "admin1" >> "$RECONDIR"/tmp/passwds.tmp
+    cat /usr/share/seclists/Passwords/Common-Credentials/best110.txt \
+        /usr/share/seclists/Passwords/Common-Credentials/top-20-common-SSH-passwords.txt \
+        /usr/share/seclists/Passwords/Common-Credentials/top-shortlist.txt \
+        /usr/share/wordlists/metasploit/idrac_default_pass.txt \
+        /usr/share/wordlists/metasploit/adobe_top100_pass.txt \
+        /usr/share/wordlists/metasploit/db2_default_pass.txt \
+        /usr/share/wordlists/metasploit/default_pass_for_services_unhash.txt \
+        /usr/share/wordlists/metasploit/http_default_pass.txt \
+        /usr/share/wordlists/metasploit/mirai_pass.txt \
+        /usr/share/wordlists/metasploit/multi_vendor_cctv_dvr_pass.txt \
+        /usr/share/wordlists/metasploit/postgres_default_pass.txt \
+        /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt \
+        >> "$RECONDIR"/tmp/passwds.tmp
 
-        cat "$RECONDIR"/tmp/users.tmp \
-            |dos2unix |sed -e 's/ //g' |sort -u \
-            > "$RECONDIR"/tmp/users.lst
+    # add extra passwords
+    echo "adminadmin" >> "$RECONDIR"/tmp/passwds.tmp
+    echo "changethis" >> "$RECONDIR"/tmp/passwds.tmp
+    echo "changeme" >> "$RECONDIR"/tmp/passwds.tmp
+    echo "j5Brn9" >> "$RECONDIR"/tmp/passwds.tmp
+    echo "UNKNOWN" >> "$RECONDIR"/tmp/passwds.tmp
+    echo "Password" >> "$RECONDIR"/tmp/passwds.tmp
+    echo "nimda" >> "$RECONDIR"/tmp/passwds.tmp
+    echo "admin1" >> "$RECONDIR"/tmp/passwds.tmp
+    echo "Password@123" >> "$RECONDIR"/tmp/passwds.tmp
 
-        cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp \
-            |dos2unix |sed -e 's/ //g' |sort -u \
-            > "$RECONDIR"/tmp/passwds.lst
+    cat /usr/share/wordlists/metasploit/*userpass*txt \
+        /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt \
+        |sed -e 's/ /:/g' \
+        |egrep -v '^:' \
+        |sort -u \
+        >> "$RECONDIR"/tmp/userpass.tmp
 
-        cat /usr/share/wordlists/metasploit/*userpass*txt \
-            /usr/share/routersploit/routersploit/wordlists/defaults.txt \
-            |sed -e 's/ /:/g' \
-            |egrep -v '^:' \
-            |sort -u \
-            > "$RECONDIR"/tmp/userpass.lst
+    grep OptWordlist /usr/share/routersploit/routersploit/modules/creds/*/*/*.py 2>/dev/null \
+        |cut -d'"' -f2 \
+        |sed -e 's|,|\n|g' \
+        |sort -u \
+        |egrep -v '^ |^:' \
+        >> "$RECONDIR"/tmp/userpass.tmp
 
-    fi
+    cat "$RECONDIR"/tmp/users.tmp \
+        |dos2unix |sed -e 's/ //g' |sort -u \
+        > "$RECONDIR"/tmp/users.lst
 
-    rm -f "$RECONDIR"/tmp/mkrecon.txt >/dev/null 2>&1
+    cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp \
+        |dos2unix |sed -e 's/ //g' |sort -u \
+        > "$RECONDIR"/tmp/passwds.lst
+
+    cat "$RECONDIR"/tmp/userpass.tmp \
+        |dos2unix |sort -u \
+        > "$RECONDIR"/tmp/userpass.lst
+
     echo '.cvspass' >> "$RECONDIR"/tmp/mkrecon.txt
     echo '.Xauthority' >> "$RECONDIR"/tmp/mkrecon.txt
     echo '.vnc/passwd' >> "$RECONDIR"/tmp/mkrecon.txt
@@ -785,14 +831,11 @@ function buildEnv()
     echo 'wls-wsat/RegistrationRequesterPortType11' >> "$RECONDIR"/tmp/mkrecon.txt
     echo 'wls-wsat/CoordinatorPortType' >> "$RECONDIR"/tmp/mkrecon.txt
 
-    if [[ ! -f "$RECONDIR"/tmp/dns.lst ]]
-    then
-        cat \
-            /usr/share/dnsrecon/namelist.txt \
-            /usr/share/dnsenum/dns.txt \
-            /usr/share/nmap/nselib/data/vhosts-full.lst \
-            |sort -u >"$RECONDIR"/tmp/dns.lst
-    fi
+    cat \
+        /usr/share/dnsrecon/namelist.txt \
+        /usr/share/dnsenum/dns.txt \
+        /usr/share/nmap/nselib/data/vhosts-full.lst \
+        |sort -u >"$RECONDIR"/tmp/dns.lst
 
     if echo $TARGET |egrep -q '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+'
     then
@@ -945,7 +988,7 @@ function snmpScan()
         /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \
         /usr/share/nmap/nselib/data/snmpcommunities.lst \
         /usr/share/seclists/Discovery/SNMP/snmp.txt \
-        /usr/share/routersploit/routersploit/wordlists/snmp.txt \
+        /usr/share/routersploit/routersploit/resources/wordlists/snmp.txt \
         /usr/share/wordlists/metasploit/snmp_default_pass.txt \
         |egrep -v '^#'|sort -u )
     do
@@ -1001,27 +1044,143 @@ function routersploitScan()
 {
     local port
     local module
+    local ssl
+    local url
+    local cmdfile
+    local service
 
-    rm -f "$RECONDIR"/tmp/routersploitscript >/dev/null 2>&1
-    for port in $(cat "$RECONDIR"/${TARGET}.baseurls |cut -d':' -f3)
+    for port in ${FTPPORTS[@]}
     do
+        cmdfile="$RECONDIR"/tmp/routersploitscript.ftp
+        mkdir -p "$RECONDIR"/tmp/routersploitscript.ftp.d >/dev/null 2>&1
+        echo "exec echo \"$BORDER\"" >>$cmdfile
+        echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
+        echo "use creds/generic/ftp_default" >>$cmdfile
+        echo "set target $IP" >>$cmdfile
+        echo "set port $port" >>$cmdfile
+        echo "set threads 1" >>$cmdfile
+        echo "set verbosity false" >>$cmdfile
+        echo "set stop_on_success false" >>$cmdfile
+        echo "run" >>$cmdfile
+    done
+    for port in ${TELNETPORTS[@]}
+    do
+        cmdfile="$RECONDIR"/tmp/routersploitscript.telnet
+        mkdir -p "$RECONDIR"/tmp/routersploitscript.telnet.d >/dev/null 2>&1
+        echo "exec echo \"$BORDER\"" >>$cmdfile
+        echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
+        echo "use creds/generic/telnet_default" >>$cmdfile
+        echo "set target $IP" >>$cmdfile
+        echo "set port $port" >>$cmdfile
+        echo "set threads 1" >>$cmdfile
+        echo "set verbosity false" >>$cmdfile
+        echo "set stop_on_success false" >>$cmdfile
+        echo "run" >>$cmdfile
+    done
+    for port in ${SSHPORTS[@]}
+    do
+        cmdfile="$RECONDIR"/tmp/routersploitscript.ssh
+        mkdir -p "$RECONDIR"/tmp/routersploitscript.ssh.d >/dev/null 2>&1
+        echo "exec echo \"$BORDER\"" >>$cmdfile
+        echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
+        echo "use creds/generic/ssh_default" >>$cmdfile
+        echo "set target $IP" >>$cmdfile
+        echo "set port $port" >>$cmdfile
+        echo "set threads 1" >>$cmdfile
+        echo "set verbosity false" >>$cmdfile
+        echo "set stop_on_success false" >>$cmdfile
+        echo "run" >>$cmdfile
+    done
+
+    for port in ${HTTPPORTS[@]}
+    do
+        cmdfile="$RECONDIR"/tmp/routersploitscript.http
+        mkdir -p "$RECONDIR"/tmp/routersploitscript.http.d >/dev/null 2>&1
         for module in \
-            scanners/autopwn \
-            creds/http_form_bruteforce \
-            creds/http_form_default \
-            creds/http_basic_bruteforce \
-            creds/http_basic_default
+            creds/generic/http_basic_digest_default \
+            creds/generic/http_basic_digest_bruteforce 
         do
-            echo "use $module" >>"$RECONDIR"/tmp/routersploitscript
-            echo "set target $TARGET" >>"$RECONDIR"/tmp/routersploitscript
-            echo "set port $port" >>"$RECONDIR"/tmp/routersploitscript
+            echo "exec echo \"$BORDER\"" >>$cmdfile
+            echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
+            echo "use $module" >>$cmdfile
+            echo "set target $IP" >>$cmdfile
+            echo "set port $port" >>$cmdfile
+            echo "set ssl false" >>$cmdfile
+            echo "set threads 1" >>$cmdfile
+            echo "set verbosity false" >>$cmdfile
+            echo "set stop_on_success false" >>$cmdfile
+            echo "run" >>$cmdfile
+        done
+        for module in $(echo "show all" |routersploit 2>/dev/null|grep webinterface_http)
+        do
+            echo "exec echo \"$BORDER\"" >>$cmdfile
+            echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
+            echo "use $module" >>$cmdfile
+            echo "set target $IP" >>$cmdfile
+            echo "set port $port" >>$cmdfile
+            echo "set ssl false" >>$cmdfile
+            echo "set threads 1" >>$cmdfile
+            echo "set verbosity false" >>$cmdfile
+            echo "set stop_on_success false" >>$cmdfile
+            echo "run" >>$cmdfile
         done
     done
 
-    cat "$RECONDIR"/tmp/routersploitscript \
-        |timeout --kill-after 10 --foreground 1400 routersploit 2>&1 \
-        |sed -r "s/\x1B\[(([0-9]{1,2})?(;)?([0-9]{1,2})?)?[m,K,H,f,J]//g" \
-        > "$RECONDIR"/${TARGET}.routersploit 2>&1
+    for port in ${HTTPSPORTS[@]}
+    do
+        cmdfile="$RECONDIR"/tmp/routersploitscript.https
+        mkdir -p "$RECONDIR"/tmp/routersploitscript.https.d >/dev/null 2>&1
+        for module in \
+            creds/generic/http_basic_digest_default \
+            creds/generic/http_basic_digest_bruteforce 
+        do
+            echo "exec echo \"$BORDER\"" >>$cmdfile
+            echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
+            echo "use $module" >>$cmdfile
+            echo "set target $IP" >>$cmdfile
+            echo "set port $port" >>$cmdfile
+            echo "set ssl true" >>$cmdfile
+            echo "set threads 1" >>$cmdfile
+            echo "set verbosity false" >>$cmdfile
+            echo "set stop_on_success false" >>$cmdfile
+            echo "run" >>$cmdfile
+        done
+        for module in $(echo "show all" |routersploit 2>/dev/null|grep webinterface_http)
+        do
+            echo "exec echo \"$BORDER\"" >>$cmdfile
+            echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
+            echo "use $module" >>$cmdfile
+            echo "set target $IP" >>$cmdfile
+            echo "set port $port" >>$cmdfile
+            echo "set ssl true" >>$cmdfile
+            echo "set threads 1" >>$cmdfile
+            echo "set verbosity false" >>$cmdfile
+            echo "set stop_on_success false" >>$cmdfile
+            echo "run" >>$cmdfile
+        done
+    done
+
+    # Launch a routersploit for each service.
+    # Move into a service-dedicated directory because routersploit creates a logfile.
+    for service in ssh telnet ftp http https
+    do
+        if [[ -f "$RECONDIR"/tmp/routersploitscript.$service ]]
+        then
+            (
+            cd "$RECONDIR"/tmp/routersploitscript.$service.d
+            cat "$RECONDIR"/tmp/routersploitscript.$service \
+                |timeout --kill-after 10 --foreground 28800 routersploit 2>&1 \
+                |sed -r "s/\x1B\[(([0-9]{1,2})?(;)?([0-9]{1,2})?)?[m,K,H,f,J]//g" \
+                > "$RECONDIR"/${TARGET}.routersploit.$service 2>&1
+            ) &
+        fi
+    done
+
+    wait
+    wait
+    wait
+    wait
+    wait
 
     return 0
 }
@@ -1173,10 +1332,8 @@ function dnsScan()
     echo "CHECKING $RECONDIR/${TARGET}.arpas/*.in-addr.arpa."
     for file in "$RECONDIR"/${TARGET}.arpas/*.in-addr.arpa.
     do
-        if [[ ! -f "$file" ]]
-        then
-            break
-        fi
+        [[ ! -f "$file" ]] && break
+
         arpa=${file##*/}
         if ! grep -q SOA "$file"
         then
@@ -1688,18 +1845,23 @@ function webDiscover()
     cat "$RECONDIR"/${TARGET}.dirburls "$RECONDIR"/${TARGET}.spider 2>/dev/null  \
         |cut -d'?' -f1|cut -d'%' -f1|cut -d'"' -f1 \
         |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' \
-        |sed -e "s|$TARGET//|$TARGET/|g" \
+        |sed -e "s|$TARGET//*|$TARGET/|g" \
+        |sed -e "s|\(^https:\)//\(.*\)|\1,,\2|" \
+        |sed -e "s|\(^http:\)//\(.*\)|\1,,\2|" \
+        |sed -e 's|//*|/|g' \
+        |sed -e 's|:,,|://|' \
+        |sed -e 's|/$||' \
         |sort -u > /tmp/${TARGET}.urls.raw
 
     # remove duplicates that have standard ports.  e.g. http://target:80/dir -> http://target/dir
     for url in $(cat /tmp/${TARGET}.urls.raw 2>/dev/null )
     do
-        if echo $url|grep ':80/' |egrep -q '^http://'
+        if echo $url|egrep ':80/|:80$' |egrep -q '^http://'
         then 
-            newurl=$(echo $url|sed -e 's/:80//')
-        elif echo $url|grep ':443/' |egrep -q '^https://'
+            newurl=$(echo $url|sed -e 's|:80||')
+        elif echo $url|egrep ':443/|:443$' |egrep -q '^https://'
         then
-            newurl=$(echo $url|sed -e 's/:443//')
+            newurl=$(echo $url|sed -e 's|:443||')
         else 
             newurl=$url
         fi
@@ -1841,7 +2003,7 @@ function sqlmapScan()
             |tail -n +7 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
-            |egrep -v '^\[\?|\[.*;'
+            |egrep -v '^\[\?|\[.*;' \
             >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 
         echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 
 
@@ -2026,8 +2188,10 @@ function fuzzURLs()
         done
     fi
 
-    sort -u "$RECONDIR"/tmp/${TARGET}.FUZZ.raw |grep "$TARGET" > "$RECONDIR"/tmp/${TARGET}.FUZZ
-    sort -u "$RECONDIR"/tmp/${TARGET}.FUZZ.raw.login |grep "$TARGET" > "$RECONDIR"/tmp/${TARGET}.FUZZ.login
+    sort -u "$RECONDIR"/tmp/${TARGET}.FUZZ.raw 2>/dev/null |grep "$TARGET" \
+        > "$RECONDIR"/tmp/${TARGET}.FUZZ
+    sort -u "$RECONDIR"/tmp/${TARGET}.FUZZ.raw.login 2>/dev/null |grep "$TARGET" \
+        > "$RECONDIR"/tmp/${TARGET}.FUZZ.login
 
     IFS=$'\n'
     i=0
@@ -2084,6 +2248,8 @@ function fuzzURLs()
 
     for file in "$RECONDIR"/${TARGET}.wfuzz/raws/*.wfuzz.*.html
     do
+        [[ ! -f "$file" ]] && break
+
         dos2unix "$file" >/dev/null 2>&1
         # change dark theme to light theme
         cat "$file" \
@@ -2349,10 +2515,10 @@ function scanURLs()
     done
 
     # run fimap on anything with php
+    echo "Running fimap on $url"
+    echo "... outputs $RECONDIR/$TARGET.fimap"
     for url in $(egrep -i '\.php$' "$RECONDIR"/${TARGET}.urls |awk '{print $1}')
     do
-        echo "Running fimap on $url"
-        echo "... outputs $RECONDIR/$TARGET.fimap"
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.fimap
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.fimap
         timeout --kill-after=10 --foreground 300 \
@@ -2371,7 +2537,8 @@ function memcacheScan()
     local cmdfile="$RECONDIR"/tmp/memcached.${port}.metasploit
     local port=$1
 
-    echo "use auxiliary/gather/memcached_extractor" > $cmdfile
+    echo "color false" > $cmdfile
+    echo "use auxiliary/gather/memcached_extractor" >> $cmdfile
     echo "set RHOSTS $TARGET" >> $cmdfile
     echo "set RHOST $TARGET" >> $cmdfile
     echo "set RPORT $TARGET" >> $cmdfile
@@ -2379,11 +2546,15 @@ function memcacheScan()
     echo "run" >> $cmdfile
     echo "exit" >> $cmdfile
 
-    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.msf.memcached.${port}.out >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.memcached.${port}.msf.raw >/dev/null 2>&1
 
     # strip hex and convert newlines to real newlines
-    perl -pi -e 's|\\r\\n|\n|g' "$RECONDIR"/${TARGET}.msf.memcached.${port}.out 
-    perl -pi -e 's|\\x..| |g' "$RECONDIR"/${TARGET}.msf.memcached.${port}.out 
+    perl -pi -e 's|\\r\\n|\n|g' "$RECONDIR"/tmp/${TARGET}.memcached.${port}.msf.raw
+    perl -pi -e 's|\\x..| |g' "$RECONDIR"/tmp/${TARGET}.memcached.${port}.msf.raw
+
+    cat "$RECONDIR"/tmp/${TARGET}.memcached.${port}.msf.raw 2>&1 \
+        |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
+        > "$RECONDIR"/${TARGET}.memcached.${port}.msf
 
     return 0
 }
@@ -2394,7 +2565,8 @@ function ipmiScan()
 {
     local cmdfile="$RECONDIR"/tmp/ipmi.metasploit
 
-    echo "use auxiliary/scanner/ipmi/ipmi_dumphashes" > $cmdfile
+    echo "color false" > $cmdfile
+    echo "use auxiliary/scanner/ipmi/ipmi_dumphashes" >> $cmdfile
     echo "set RHOSTS $TARGET" >> $cmdfile
     echo "set RHOST $TARGET" >> $cmdfile
     echo "set OUTPUT_HASHCAT_FILE $RECONDIR/${TARGET}.ipmi.hashcat" >> $cmdfile
@@ -2416,32 +2588,35 @@ function ipmiScan()
 ################################################################################
 
 ################################################################################
-function rmiScan()
+function msfRMIScan()
 {
     local port
     local cmdfile="$RECONDIR/tmp/rmiscanscript"
+    local msfscan
 
-    for port in ${RMIPORTS[@]}
+    echo "color false" > $cmdfile
+    for msfscan in auxiliary/gather/java_rmi_registry auxiliary/scanner/misc/java_rmi_server
     do
-        echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
-        echo "use auxiliary/scanner/misc/java_rmi_server" >> "$cmdfile"
-        echo "set RPORT $port" >> "$cmdfile"
-        echo "set RHOSTS $TARGET" >> "$cmdfile"
-        echo "set RHOST $TARGET" >> $cmdfile
-        echo "set VERBOSE false" >> $cmdfile
-        echo "run" >> "$cmdfile"
-        echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
-        echo "use auxiliary/gather/java_rmi_registry" >> "$cmdfile"
-        echo "set RPORT $port" >> "$cmdfile"
-        echo "set RHOSTS $TARGET" >> "$cmdfile"
-        echo "set RHOST $TARGET" >> $cmdfile
-        echo "set VERBOSE false" >> $cmdfile
-        echo "run" >> "$cmdfile"
-        echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
+        for port in ${RMIPORTS[@]}
+        do
+            echo "echo \"$BORDER\"" >> "$cmdfile"
+            echo "echo 'TESTING $TARGET:$port WITH $msfscan'" >> "$cmdfile"
+            echo "use $msfscan" >> "$cmdfile"
+            echo "set RPORT $port" >> "$cmdfile"
+            echo "set RHOSTS $TARGET" >> "$cmdfile"
+            echo "set RHOST $TARGET" >> $cmdfile
+            echo "set VERBOSE false" >> $cmdfile
+            echo "run" >> "$cmdfile"
+            echo "echo ''" >> "$cmdfile"
+        done
     done
     echo "exit" >> "$cmdfile"
 
-    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.rmi >/dev/null 2>&1
+
+    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.rmi.msf.raw >/dev/null 2>&1
+    cat "$RECONDIR"/tmp/${TARGET}.rmi.msf.raw 2>&1 \
+        |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
+        > "$RECONDIR"/${TARGET}.rmi.msf
 
     return 0
 }
@@ -2461,12 +2636,13 @@ function msfHttpScan()
         -x 'search auxiliary/scanner/http/; exit' \
         |awk '{print $1}' \
         |grep 'auxiliary/scanner/http/' \
-        |egrep -v 'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass|http/xpath' \
+        |egrep -v 'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass|http/xpath|http/hp_' \
         )
     do
         httpscans[${#httpscans[@]}]=$msfscan
     done
 
+    echo "color false" > $cmdfile
 
     IFS=$'\n'
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
@@ -2480,21 +2656,83 @@ function msfHttpScan()
         port=${url##*:}
         for msfscan in ${httpscans[@]}
         do
-            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
-            echo "echo 'TESTING $url'" >> "$cmdfile"
+            echo "echo \"$BORDER\"" >> "$cmdfile"
+            echo "echo 'TESTING $url WITH $msfscan'" >> "$cmdfile"
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
             echo "set RHOST $TARGET" >> $cmdfile
             echo "set SSL $ssl" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
+            echo "set THREADS 2" >> $cmdfile
             echo "run" >> "$cmdfile"
-            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
+            echo "echo ''" >> "$cmdfile"
         done
     done
     echo "exit" >> "$cmdfile"
 
-    timeout --kill-after=10 --foreground 28800 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.http.msf >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 28800 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.http.msf.raw >/dev/null 2>&1
+    cat "$RECONDIR"/tmp/${TARGET}.http.msf.raw 2>&1 \
+        |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
+        > "$RECONDIR"/${TARGET}.http.msf
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function msfHPScan()
+{
+    local hpcans=()
+    local msfscan
+    local port
+    local cmdfile="$RECONDIR/tmp/msfHPScanScript"
+
+    for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
+        -x 'search auxiliary/scanner/http/; exit' \
+        |grep 'http/hp_' \
+        |awk '{print $1}')
+    do
+        hpscans[${#hpscans[@]}]=$msfscan
+    done
+
+    echo "color false" > $cmdfile
+
+    for msfscan in ${hpscans[@]}
+    do
+        for port in ${HTTPSPORTS[@]}
+        do
+            echo "echo \"$BORDER\"" >> "$cmdfile"
+            echo "echo 'TESTING $TARGET:$port WITH $msfscan'" >> "$cmdfile"
+            echo "use $msfscan" >> "$cmdfile"
+            echo "set RPORT $port" >> "$cmdfile"
+            echo "set RHOSTS $TARGET" >> "$cmdfile"
+            echo "set RHOST $TARGET" >> $cmdfile
+            echo "set SSL true" >> "$cmdfile"
+            echo "set VERBOSE false" >> $cmdfile
+            echo "run" >> "$cmdfile"
+            echo "echo ''" >> "$cmdfile"
+        done
+        for port in ${HTTPPORTS[@]}
+        do
+            echo "echo \"$BORDER\"" >> "$cmdfile"
+            echo "echo 'TESTING $TARGET:$port WITH $msfscan'" >> "$cmdfile"
+            echo "use $msfscan" >> "$cmdfile"
+            echo "set RPORT $port" >> "$cmdfile"
+            echo "set RHOSTS $TARGET" >> "$cmdfile"
+            echo "set RHOST $TARGET" >> $cmdfile
+            echo "set SSL false" >> "$cmdfile"
+            echo "set VERBOSE false" >> $cmdfile
+            echo "run" >> "$cmdfile"
+            echo "echo ''" >> "$cmdfile"
+        done
+    done
+    echo "exit" >> "$cmdfile"
+
+    timeout --kill-after=10 --foreground 14400 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.hp.msf.raw >/dev/null 2>&1
+    cat "$RECONDIR"/tmp/${TARGET}.hp.msf.raw 2>&1 \
+        |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
+        > "$RECONDIR"/${TARGET}.hp.msf
 
     return 0
 }
@@ -2509,17 +2747,21 @@ function msfSapScan()
     local cmdfile="$RECONDIR/tmp/msfSapScanScript"
 
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
-        -x 'search auxiliary/scanner/sap/; exit'|grep 'auxiliary/scanner/sap/' \
+        -x 'search auxiliary/scanner/sap/; exit' \
+        |grep 'auxiliary/scanner/sap/' \
         |awk '{print $1}')
     do
         sapscans[${#sapscans[@]}]=$msfscan
     done
 
+    echo "color false" > $cmdfile
+
     for msfscan in ${sapscans[@]}
     do
-        for port in ${SSLPORTS[@]}
+        for port in ${HTTPSPORTS[@]}
         do
-            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
+            echo "echo \"$BORDER\"" >> "$cmdfile"
+            echo "echo 'TESTING $TARGET:$port WITH $msfscan'" >> "$cmdfile"
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
@@ -2527,11 +2769,12 @@ function msfSapScan()
             echo "set SSL true" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
             echo "run" >> "$cmdfile"
-            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
+            echo "echo ''" >> "$cmdfile"
         done
-        for port in ${NONSSLPORTS[@]}
+        for port in ${HTTPPORTS[@]}
         do
-            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
+            echo "echo \"$BORDER\"" >> "$cmdfile"
+            echo "echo 'TESTING $TARGET:$port WITH $msfscan'" >> "$cmdfile"
             echo "use $msfscan" >> "$cmdfile"
             echo "set RPORT $port" >> "$cmdfile"
             echo "set RHOSTS $TARGET" >> "$cmdfile"
@@ -2539,23 +2782,27 @@ function msfSapScan()
             echo "set SSL false" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
             echo "run" >> "$cmdfile"
-            echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
+            echo "echo ''" >> "$cmdfile"
         done
     done
     echo "exit" >> "$cmdfile"
 
-    timeout --kill-after=10 --foreground 14400 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.sap.msf >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 14400 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.sap.msf.raw >/dev/null 2>&1
+    cat "$RECONDIR"/tmp/${TARGET}.sap.msf.raw 2>&1 \
+        |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
+        > "$RECONDIR"/${TARGET}.sap.msf
 
     return 0
 }
 ################################################################################
 
 ################################################################################
-function juniperScan()
+function msfJuniperScan()
 {
     local msfscan
     local cmdfile="$RECONDIR"/tmp/juniper.msf
 
+    echo "color false" > $cmdfile
     echo "use auxiliary/scanner/ssh/juniper_backdoor" >> "$cmdfile"
     echo "set RHOST $TARGET" >> "$cmdfile"
     echo "set RHOSTS $TARGET" >> "$cmdfile"
@@ -2563,17 +2810,19 @@ function juniperScan()
     echo "run" >> "$cmdfile"
     echo "exit" >> "$cmdfile"
 
-    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.juniper >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.juniper.msf >/dev/null 2>&1
 
     return 0
 }
 ################################################################################
 
 ################################################################################
-function ciscoScan()
+function msfCiscoScan()
 {
     local msfscan
     local cmdfile="$RECONDIR"/tmp/cisco.msf
+
+    echo "color false" > $cmdfile
 
     for msfscan in \
         auxiliary/admin/cisco/cisco_asa_extrabacon \
@@ -2596,18 +2845,22 @@ function ciscoScan()
         auxiliary/scanner/snmp/cisco_config_tftp \
         auxiliary/scanner/snmp/cisco_upload_file
     do
-        echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
+        echo "echo \"$BORDER\"" >> "$cmdfile"
+        echo "echo 'TESTING $TARGET WITH $msfscan'" >> "$cmdfile"
         echo "use $msfscan" >> "$cmdfile"
         echo "set RHOST $TARGET" >> "$cmdfile"
         echo "set RHOSTS $TARGET" >> "$cmdfile"
         echo "set VERBOSE false" >> $cmdfile
         echo "run" >> "$cmdfile"
-        echo "echo $BORDER $BORDER $BORDER $BORDER $BORDER" >> "$cmdfile"
+        echo "echo ''" >> "$cmdfile"
     done
     echo "exit" >> "$cmdfile"
 
     timeout --kill-after=10 --foreground 14400 \
-        /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.cisco >/dev/null 2>&1
+        /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.cisco.msf.raw >/dev/null 2>&1
+    cat "$RECONDIR"/tmp/${TARGET}.cisco.msf.raw 2>&1 \
+        |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
+        > "$RECONDIR"/${TARGET}.cisco.msf
 
     return 0
 }
@@ -2711,6 +2964,25 @@ function crackers()
         brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c 2>&1 \
         |tail -n +38 |grep -v 'ACCOUNT CHECK: ' \
         >> "$RECONDIR"/${TARGET}.brutespray &
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function portcheck()
+{
+    local port=$1
+    local array=$2
+    local pc
+
+    for pc in ${array[@]}
+    do
+        if [[ $port == $pc ]]
+        then
+            return 1
+        fi
+    done
 
     return 0
 }

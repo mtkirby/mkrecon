@@ -380,6 +380,10 @@ function MAIN()
                 echo "... outputs $RECONDIR/${TARGET}.smbdirs"
                 echo "... outputs $RECONDIR/${TARGET}.rpcclient"
                 smbScan &
+
+                echo "starting doHydra $port smb"
+                echo "... outputs $RECONDIR/${TARGET}.smb.$port.hydra"
+                doHydra $port smb /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt &
             fi
         
             # redis
@@ -796,7 +800,7 @@ function buildEnv()
         > "$RECONDIR"/tmp/passwds.lst
 
     cat "$RECONDIR"/tmp/userpass.tmp \
-        |dos2unix |sort -u \
+        |dos2unix |grep ':' |sort -u \
         > "$RECONDIR"/tmp/userpass.lst
 
     echo '.cvspass' >> "$RECONDIR"/tmp/mkrecon.txt

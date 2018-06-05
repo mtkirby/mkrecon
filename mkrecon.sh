@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180604 Kirby
+# 20180605 Kirby
 
 umask 077
 
@@ -35,6 +35,7 @@ function MAIN()
     local ssl
     local SSHPORTS=()
     local SSLPORTS=()
+    local sstitle
     local state
     local TCPPORTS=()
     local TELNETPORTS=()
@@ -81,7 +82,7 @@ function MAIN()
     
     echo "starting searchsploit"
     echo "... outputs $RECONDIR/${TARGET}.searchsploit"
-    searchsploit --colour --nmap "$RECONDIR"/${TARGET}.xml >> "$RECONDIR"/${TARGET}.searchsploit 2>&1 &
+    searchsploit --colour --nmap "$RECONDIR"/${TARGET}.xml >> "$RECONDIR"/${TARGET}.searchsploit 2>&1 
     
     echo "starting basicEyeWitness"
     echo "... outputs $RECONDIR/${TARGET}.basicEyeWitness"
@@ -114,6 +115,16 @@ function MAIN()
             if [[ $state =~ filtered ]]
             then
                 continue
+            fi
+
+            if [[ $version =~ .... ]]
+            then
+                sstitle=${version%% *}
+                sstitle=${sstitle%%/*}
+                echo "$BORDER" >> "$RECONDIR"/${TARGET}.searchsploit 
+                echo "SEARCHING FOR $version" >> "$RECONDIR"/${TARGET}.searchsploit
+                searchsploit --colour -t "$sstitle" >> "$RECONDIR"/${TARGET}.searchsploit 2>&1 
+                echo "$BORDER" >> "$RECONDIR"/${TARGET}.searchsploit 
             fi
 
             if [[ $version =~ Splunkd ]]
@@ -230,7 +241,7 @@ function MAIN()
                 FTPPORTS[${#FTPPORTS[@]}]=$port
                 echo "starting doHydra $port ftp"
                 echo "... outputs $RECONDIR/${TARGET}.ftp.$port.hydra"
-                doHydra $port ftp /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt &
+                doHydra $port ftp "$RECONDIR"/tmp/userpass.lst &
             fi
         
             # telnet
@@ -240,7 +251,7 @@ function MAIN()
                 TELNETPORTS[${#TELNETPORTS[@]}]=$port
                 echo "starting doHydra $port telnet"
                 echo "... outputs $RECONDIR/${TARGET}.telnet.$port.hydra"
-                doHydra $port telnet /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt &
+                doHydra $port telnet "$RECONDIR"/tmp/userpass.lst &
             fi
         
             # ssh
@@ -250,7 +261,7 @@ function MAIN()
                 SSHPORTS[${#SSHPORTS[@]}]=$port
                 echo "starting doHydra $port ssh"
                 echo "... outputs $RECONDIR/${TARGET}.ssh.$port.hydra"
-                doHydra $port ssh /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt &
+                doHydra $port ssh "$RECONDIR"/tmp/userpass.lst &
                 sshflag=1
             fi
         
@@ -260,7 +271,7 @@ function MAIN()
             then
                 echo "starting doHydra $port mssql"
                 echo "... outputs $RECONDIR/${TARGET}.mssql.$port.hydra"
-                doHydra $port mssql /usr/share/seclists/Passwords/Default-Credentials/mssql-betterdefaultpasslist.txt &
+                doHydra $port mssql "$RECONDIR"/tmp/userpass.lst &
             fi
         
             # mysql
@@ -269,7 +280,11 @@ function MAIN()
             then
                 echo "starting doHydra $port mysql"
                 echo "... outputs $RECONDIR/${TARGET}.mysql.$port.hydra"
-                doHydra $port mysql /usr/share/seclists/Passwords/Default-Credentials/mysql-betterdefaultpasslist.txt &
+                doHydra $port mysql "$RECONDIR"/tmp/userpass.lst &
+
+                echo "starting mysqlScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.mysql.$port"
+                mysqlScan $port &
             fi
         
             # oracle
@@ -383,7 +398,7 @@ function MAIN()
 
                 echo "starting doHydra $port smb"
                 echo "... outputs $RECONDIR/${TARGET}.smb.$port.hydra"
-                doHydra $port smb /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt &
+                doHydra $port smb "$RECONDIR"/tmp/userpass.lst &
             fi
         
             # redis
@@ -463,17 +478,9 @@ function MAIN()
     
                 echo "starting postgresqlHydra for port $port"
                 echo "... outputs $RECONDIR/${TARGET}.postgresql.$port.hydra"
-                doHydra $port postgres /usr/share/seclists/Passwords/Default-Credentials/postgres-betterdefaultpasslist.txt &
+                doHydra $port postgres "$RECONDIR"/tmp/userpass.lst &
             fi
     
-            # mysql
-            if [[ $protocol == 'tcp' ]] \
-            && [[ $service =~ mysql ]]
-            then
-                echo "starting mysqlScan for port $port"
-                echo "... outputs $RECONDIR/${TARGET}.mysql.$port"
-                mysqlScan $port &
-            fi
         done
     done
 
@@ -632,7 +639,7 @@ function MAIN()
         echo "Jobs are still running.  Waiting... $jobscount out of 480 minutes"
         jobs -l
         (( jobscount++ ))
-        if [[ "$jobscount" -ge 480 ]]
+        if [[ "$jobscount" -gt 480 ]]
         then
             echo "killing jobs"
             killHangs
@@ -747,10 +754,8 @@ function buildEnv()
         /usr/share/seclists/Usernames/top-usernames-shortlist.txt \
         /usr/share/wordlists/metasploit/idrac_default_user.txt \
         /usr/share/wordlists/metasploit/http_default_users.txt \
+        |sort -u \
         >> "$RECONDIR"/tmp/users.tmp 
-
-    # add extra users
-    echo "toor" >> "$RECONDIR"/tmp/users.tmp
 
     cat /usr/share/seclists/Passwords/Common-Credentials/best110.txt \
         /usr/share/seclists/Passwords/Common-Credentials/top-20-common-SSH-passwords.txt \
@@ -764,6 +769,7 @@ function buildEnv()
         /usr/share/wordlists/metasploit/multi_vendor_cctv_dvr_pass.txt \
         /usr/share/wordlists/metasploit/postgres_default_pass.txt \
         /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt \
+        |sort -u \
         >> "$RECONDIR"/tmp/passwds.tmp
 
     # add extra passwords
@@ -778,9 +784,19 @@ function buildEnv()
     echo "Password@123" >> "$RECONDIR"/tmp/passwds.tmp
 
     cat /usr/share/wordlists/metasploit/*userpass*txt \
-        /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt \
         |sed -e 's/ /:/g' \
-        |egrep -v '^:' \
+        |sort -u \
+        >> "$RECONDIR"/tmp/userpass.tmp
+
+    cat /usr/share/seclists/Passwords/Default-Credentials/db2-betterdefaultpasslist.txt \
+        /usr/share/seclists/Passwords/Default-Credentials/mysql-betterdefaultpasslist.txt \
+        /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt \
+        /usr/share/seclists/Passwords/Default-Credentials/telnet-betterdefaultpasslist.txt \
+        /usr/share/seclists/Passwords/Default-Credentials/ftp-betterdefaultpasslist.txt \
+        /usr/share/seclists/Passwords/Default-Credentials/postgres-betterdefaultpasslist.txt \
+        /usr/share/seclists/Passwords/Default-Credentials/mssql-betterdefaultpasslist.txt \
+        /usr/share/seclists/Passwords/Default-Credentials/windows-betterdefaultpasslist.txt \
+        /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt \
         |sort -u \
         >> "$RECONDIR"/tmp/userpass.tmp
 
@@ -788,19 +804,22 @@ function buildEnv()
         |cut -d'"' -f2 \
         |sed -e 's|,|\n|g' \
         |sort -u \
-        |egrep -v '^ |^:' \
         >> "$RECONDIR"/tmp/userpass.tmp
 
+    echo "toor:toor" >> "$RECONDIR"/tmp/userpass.tmp
+
     cat "$RECONDIR"/tmp/users.tmp \
-        |dos2unix |sed -e 's/ //g' |sort -u \
+        |dos2unix -f |sed -e 's/ //g' |sort -u \
         > "$RECONDIR"/tmp/users.lst
 
     cat "$RECONDIR"/tmp/users.tmp "$RECONDIR"/tmp/passwds.tmp \
-        |dos2unix |sed -e 's/ //g' |sort -u \
+        |dos2unix -f |sed -e 's/ //g' |sort -u \
         > "$RECONDIR"/tmp/passwds.lst
 
     cat "$RECONDIR"/tmp/userpass.tmp \
-        |dos2unix |grep ':' |sort -u \
+        |dos2unix -f |grep ':' |sort -u \
+        |egrep -v '^ |^:' \
+        |egrep -v ':$' \
         > "$RECONDIR"/tmp/userpass.lst
 
     echo '.cvspass' >> "$RECONDIR"/tmp/mkrecon.txt
@@ -1057,7 +1076,7 @@ function routersploitScan()
     do
         cmdfile="$RECONDIR"/tmp/routersploitscript.ftp
         mkdir -p "$RECONDIR"/tmp/routersploitscript.ftp.d >/dev/null 2>&1
-        echo "exec echo \"$BORDER\"" >>$cmdfile
+        echo "exec echo \"$BORDER$BORDER\"" >>$cmdfile
         echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
         echo "use creds/generic/ftp_default" >>$cmdfile
         echo "set target $IP" >>$cmdfile
@@ -1071,7 +1090,7 @@ function routersploitScan()
     do
         cmdfile="$RECONDIR"/tmp/routersploitscript.telnet
         mkdir -p "$RECONDIR"/tmp/routersploitscript.telnet.d >/dev/null 2>&1
-        echo "exec echo \"$BORDER\"" >>$cmdfile
+        echo "exec echo \"$BORDER$BORDER\"" >>$cmdfile
         echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
         echo "use creds/generic/telnet_default" >>$cmdfile
         echo "set target $IP" >>$cmdfile
@@ -1085,7 +1104,7 @@ function routersploitScan()
     do
         cmdfile="$RECONDIR"/tmp/routersploitscript.ssh
         mkdir -p "$RECONDIR"/tmp/routersploitscript.ssh.d >/dev/null 2>&1
-        echo "exec echo \"$BORDER\"" >>$cmdfile
+        echo "exec echo \"$BORDER$BORDER\"" >>$cmdfile
         echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
         echo "use creds/generic/ssh_default" >>$cmdfile
         echo "set target $IP" >>$cmdfile
@@ -1104,7 +1123,7 @@ function routersploitScan()
             creds/generic/http_basic_digest_default \
             creds/generic/http_basic_digest_bruteforce 
         do
-            echo "exec echo \"$BORDER\"" >>$cmdfile
+            echo "exec echo \"$BORDER$BORDER\"" >>$cmdfile
             echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
             echo "use $module" >>$cmdfile
             echo "set target $IP" >>$cmdfile
@@ -1117,7 +1136,7 @@ function routersploitScan()
         done
         for module in $(echo "show all" |routersploit 2>/dev/null|grep webinterface_http)
         do
-            echo "exec echo \"$BORDER\"" >>$cmdfile
+            echo "exec echo \"$BORDER$BORDER\"" >>$cmdfile
             echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
             echo "use $module" >>$cmdfile
             echo "set target $IP" >>$cmdfile
@@ -1138,7 +1157,7 @@ function routersploitScan()
             creds/generic/http_basic_digest_default \
             creds/generic/http_basic_digest_bruteforce 
         do
-            echo "exec echo \"$BORDER\"" >>$cmdfile
+            echo "exec echo \"$BORDER$BORDER\"" >>$cmdfile
             echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
             echo "use $module" >>$cmdfile
             echo "set target $IP" >>$cmdfile
@@ -1151,7 +1170,7 @@ function routersploitScan()
         done
         for module in $(echo "show all" |routersploit 2>/dev/null|grep webinterface_http)
         do
-            echo "exec echo \"$BORDER\"" >>$cmdfile
+            echo "exec echo \"$BORDER$BORDER\"" >>$cmdfile
             echo "exec echo \"TESTING $IP:$port WITH $module\"" >>$cmdfile
             echo "use $module" >>$cmdfile
             echo "set target $IP" >>$cmdfile
@@ -2254,7 +2273,7 @@ function fuzzURLs()
     do
         [[ ! -f "$file" ]] && break
 
-        dos2unix "$file" >/dev/null 2>&1
+        dos2unix -f "$file" >/dev/null 2>&1
         # change dark theme to light theme
         cat "$file" \
             |sed -e 's/bgcolor=#000000/bgcolor=#FFFFFF/g' \
@@ -2582,7 +2601,8 @@ function ipmiScan()
 
     if [[ -f $RECONDIR/${TARGET}.ipmi.john ]]
     then
-        timeout --kill-after=10 --foreground 14400 john --wordlist=$RECONDIR/tmp/passwds.lst --rules=Single $RECONDIR/${TARGET}.ipmi.john \
+        timeout --kill-after=10 --foreground 14400 \
+            john --wordlist=$RECONDIR/tmp/passwds.lst --rules=Single $RECONDIR/${TARGET}.ipmi.john \
             >"$RECONDIR"/tmp/ipmi.john.out 2>&1
         john --show $RECONDIR/${TARGET}.ipmi.john >$RECONDIR/${TARGET}.ipmi.john.cracked 2>&1
     fi
@@ -2617,7 +2637,8 @@ function msfRMIScan()
     echo "exit" >> "$cmdfile"
 
 
-    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.rmi.msf.raw >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 3600 \
+        /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.rmi.msf.raw >/dev/null 2>&1
     cat "$RECONDIR"/tmp/${TARGET}.rmi.msf.raw 2>&1 \
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.rmi.msf
@@ -2675,7 +2696,8 @@ function msfHttpScan()
     done
     echo "exit" >> "$cmdfile"
 
-    timeout --kill-after=10 --foreground 28800 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.http.msf.raw >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 28800 \
+        /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.http.msf.raw >/dev/null 2>&1
     cat "$RECONDIR"/tmp/${TARGET}.http.msf.raw 2>&1 \
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.http.msf
@@ -2733,7 +2755,8 @@ function msfHPScan()
     done
     echo "exit" >> "$cmdfile"
 
-    timeout --kill-after=10 --foreground 14400 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.hp.msf.raw >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 28800 \
+        /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.hp.msf.raw >/dev/null 2>&1
     cat "$RECONDIR"/tmp/${TARGET}.hp.msf.raw 2>&1 \
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.hp.msf
@@ -2791,7 +2814,8 @@ function msfSapScan()
     done
     echo "exit" >> "$cmdfile"
 
-    timeout --kill-after=10 --foreground 14400 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.sap.msf.raw >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 14400 \
+        /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.sap.msf.raw >/dev/null 2>&1
     cat "$RECONDIR"/tmp/${TARGET}.sap.msf.raw 2>&1 \
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.sap.msf
@@ -2814,7 +2838,9 @@ function msfJuniperScan()
     echo "run" >> "$cmdfile"
     echo "exit" >> "$cmdfile"
 
-    timeout --kill-after=10 --foreground 3600 /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.juniper.msf >/dev/null 2>&1
+    timeout --kill-after=10 --foreground 3600 \
+        /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.juniper.msf \
+        >/dev/null 2>&1
 
     return 0
 }
@@ -2965,9 +2991,7 @@ function crackers()
 
     # brutespray uses service-specific wordlists in /usr/share/brutespray/wordlist
     timeout --kill-after=10 --foreground 28800 \
-        brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c 2>&1 \
-        |tail -n +38 |grep -v 'ACCOUNT CHECK: ' \
-        >> "$RECONDIR"/${TARGET}.brutespray &
+        brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c -o "$RECONDIR"/${TARGET}.brutespray.d >/dev/null 2>&1
 
     return 0
 }
@@ -3001,7 +3025,7 @@ function defaultCreds()
     local logfile="$RECONDIR/${TARGET}.defaultCreds"
 
     for name in $(cat $defpassfile \
-        |dos2unix |cut -d',' -f1 |tr '[A-Z]' '[a-z]' |sed -e 's/"//g' |sort -u)
+        |dos2unix -f |cut -d',' -f1 |tr '[A-Z]' '[a-z]' |sed -e 's/"//g' |sort -u)
     do
         # filter out nmap scan initiated because it triggered Sun on sundays
         if cat *.nmap *.whatweb 2>/dev/null |grep -v 'scan initiated' | egrep -qi "\W$name\W" 

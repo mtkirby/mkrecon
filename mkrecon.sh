@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180605 Kirby
+# 20180606 Kirby
 
 umask 077
 
@@ -295,9 +295,10 @@ function MAIN()
                 echo "... outputs $RECONDIR/${TARGET}.oracle.tnscmd10g.\$port"
                 tnscmd10gScan $port &
 
-                echo "starting passHydra $port oracle"
+                echo "starting oracleScan $port"
                 echo "... outputs $RECONDIR/${TARGET}.oracle.$port.hydra"
-                passHydra $port oracle-listener "$RECONDIR"/tmp/passwds.lst &
+                #echo "... outputs $RECONDIR/${TARGET}.nmap-oracle-brute.\$sid"
+                oracleScan $port &
             fi
     
             # vnc
@@ -372,6 +373,9 @@ function MAIN()
             then
                 echo "starting ikeScan for port $port"
                 echo "... outputs $RECONDIR/${TARGET}.${port}.ike-scan"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.ike-scan.key"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.ike-scan.key.crack"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.ike-scan.key.out"
                 ikeScan $port &
             fi
         
@@ -696,7 +700,9 @@ function buildEnv()
 {
     local file
     local pkg
-    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hydra ike-scan john joomscan jq ldap-utils libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client screen seclists skipfish snmpcheck tnscmd10g wfuzz wget whatweb wig wpscan xmlstarlet"
+    local icdir
+    local testdir
+    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan john joomscan jq ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet"
 
     for pkg in $pkgs
     do
@@ -754,6 +760,7 @@ function buildEnv()
         /usr/share/seclists/Usernames/top-usernames-shortlist.txt \
         /usr/share/wordlists/metasploit/idrac_default_user.txt \
         /usr/share/wordlists/metasploit/http_default_users.txt \
+        |dos2unix -f \
         |sort -u \
         >> "$RECONDIR"/tmp/users.tmp 
 
@@ -769,6 +776,7 @@ function buildEnv()
         /usr/share/wordlists/metasploit/multi_vendor_cctv_dvr_pass.txt \
         /usr/share/wordlists/metasploit/postgres_default_pass.txt \
         /usr/share/wordlists/metasploit/tomcat_mgr_default_pass.txt \
+        |dos2unix -f \
         |sort -u \
         >> "$RECONDIR"/tmp/passwds.tmp
 
@@ -797,6 +805,7 @@ function buildEnv()
         /usr/share/seclists/Passwords/Default-Credentials/mssql-betterdefaultpasslist.txt \
         /usr/share/seclists/Passwords/Default-Credentials/windows-betterdefaultpasslist.txt \
         /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt \
+        |dos2unix -f \
         |sort -u \
         >> "$RECONDIR"/tmp/userpass.tmp
 
@@ -821,6 +830,11 @@ function buildEnv()
         |egrep -v '^ |^:' \
         |egrep -v ':$' \
         > "$RECONDIR"/tmp/userpass.lst
+
+    cat /usr/share/seclists/Passwords/Default-Credentials/oracle-betterdefaultpasslist.txt \
+        /usr/share/nmap/nselib/data/oracle-default-accounts.lst \
+        |dos2unix -f |sed -e 's|:|/|g' |sort -u \
+        > "$RECONDIR"/tmp/defaultoracleuserpass.nmap
 
     echo '.cvspass' >> "$RECONDIR"/tmp/mkrecon.txt
     echo '.Xauthority' >> "$RECONDIR"/tmp/mkrecon.txt
@@ -854,6 +868,12 @@ function buildEnv()
     echo 'wls-wsat/RegistrationRequesterPortType11' >> "$RECONDIR"/tmp/mkrecon.txt
     echo 'wls-wsat/CoordinatorPortType' >> "$RECONDIR"/tmp/mkrecon.txt
 
+
+    if [[ ! -f /usr/share/wordlists/rockyou.txt ]]
+    then
+        gzip -k -d /usr/share/wordlists/rockyou.txt.gz >/dev/null 2>&1
+    fi
+
     cat \
         /usr/share/dnsrecon/namelist.txt \
         /usr/share/dnsenum/dns.txt \
@@ -873,6 +893,120 @@ function buildEnv()
         exit 1
     fi
 
+
+    # Check for Oracle InstantClient libraries.
+    # Issue warning if not found and provide instructions.
+    # If instantclient zip files are in /tmp, then install them
+
+    for testdir in /opt/oracle/instantclient*
+    do 
+        icdir=$testdir
+    done
+
+    if [[ ! -d "$icdir" ]] \
+    && ls /tmp/instantclient-*-linux.*.zip >/dev/null 2>&1
+    then
+        mkdir -p /opt/oracle >/dev/null 2>&1
+        for file in /tmp/instantclient-*.zip
+        do
+            unzip -o -d /opt/oracle $file >/dev/null 2>&1
+        done
+    fi
+
+    if [[ ! -d "$icdir" ]] \
+    && ! ls /tmp/instantclient-*-linux.*.zip >/dev/null 2>&1
+    then
+        echo "$BORDER"
+        echo "# WARNING: You do not have the Oracle libraries installed"
+        echo "# Some Metasploit and Nmap modules may not work if pentesting against Oracle DB"
+        echo "# If you want to install the Oracle libraries:"
+        echo "# Goto http://www.oracle.com/technetwork/database/database-technologies/instant-client/downloads/index.html"
+        echo "# Login to Oracle"
+        echo "# Select  Instant Client for Linux"
+        echo "# Select the Accept license radio button"
+        echo "# Get the latest instantclient-basic-linux.*.zip"
+        echo "# Get the latest instantclient-jdbc-linux.*.zip"
+        echo "# Get the latest instantclient-sqlplus-linux.*.zip"
+        echo "# Get the latest instantclient-sdk-linux.*.zip"
+        echo "# Put all zip files in /tmp"
+        echo "# Rerun mkrecon.sh and it will auto-install/setup"
+        echo "$BORDER"
+        echo "Continuing without Oracle libraries..."
+    fi
+
+    for testdir in /opt/oracle/instantclient*
+    do 
+        icdir=$testdir
+    done
+    if [[ -d "$icdir" ]]
+    then
+        echo "Found Oracle libraries in $icdir and will setup env"
+        export PATH=$PATH:$icdir
+        export SQLPATH=$icdir
+        export TNS_ADMIN=$icdir
+        export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$icdir
+        export ORACLE_HOME=$icdir
+
+        if ! grep -q $icdir /etc/profile.d/oracle.sh >/dev/null 2>&1
+        then
+            echo "export PATH=\$PATH:$icdir"                        >/etc/profile.d/oracle.sh
+            echo "export SQLPATH=$icdir"                           >>/etc/profile.d/oracle.sh
+            echo "export TNS_ADMIN=$icdir"                         >>/etc/profile.d/oracle.sh
+            echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$icdir" >>/etc/profile.d/oracle.sh
+            echo "export ORACLE_HOME=$icdir"                       >>/etc/profile.d/oracle.sh
+            chmod 644 /etc/profile.d/oracle.sh
+        fi
+
+        if ! grep -q $icdir /etc/ld.so.conf.d/oracle.conf >/dev/null 2>&1
+        then
+            echo "$icdir" > /etc/ld.so.conf.d/oracle.conf
+            chmod 644 /etc/ld.so.conf.d/oracle.conf
+        fi
+
+        if [[ ! -e $icdir/libclntsh.so ]]
+        then
+            rm -f $icdir/libclntsh.so >/dev/null 2>&1
+            ln -s $icdir/libclntsh.so.* $icdir/libclntsh.so
+        fi
+        for file in ojdbc8.jar libheteroxa12.so orai18n.jar orai18.jar \
+            orai18n-mapping.jar orai18n-mapping.jar
+        do
+            if [[ ! -e /usr/share/java/$file ]]
+            then
+                rm -f /usr/share/java/$file >/dev/null 2>&1
+                ln -s $icdir/$file /usr/share/java/$file
+            fi
+        done
+    
+        if [[ -f /etc/init.d/metasploit ]] \
+        && ! grep -q oracle.sh /etc/init.d/metasploit
+        then
+            echo '#!/bin/sh                                          '  >/etc/init.d/metasploit
+            echo '                                                   ' >>/etc/init.d/metasploit
+            echo '# chkconfig: 2345 80 30                            ' >>/etc/init.d/metasploit
+            echo '# description: Metasploit RPC and web daemons      ' >>/etc/init.d/metasploit
+            echo '                                                   ' >>/etc/init.d/metasploit
+            echo '### BEGIN INIT INFO                                ' >>/etc/init.d/metasploit
+            echo '# Provides:          metasploit                    ' >>/etc/init.d/metasploit
+            echo '# Required-Start:    $remote_fs $network $named    ' >>/etc/init.d/metasploit
+            echo '# Required-Stop:     $remote_fs $network $named    ' >>/etc/init.d/metasploit
+            echo '# Default-Start:     2 3 4 5                       ' >>/etc/init.d/metasploit
+            echo '# Default-Stop:      0 1 6                         ' >>/etc/init.d/metasploit
+            echo '# Short-Description: Metasploit RPC and web daemons' >>/etc/init.d/metasploit
+            echo '### END INIT INFO                                  ' >>/etc/init.d/metasploit
+            echo '                                                   ' >>/etc/init.d/metasploit
+            echo '. /etc/profile.d/oracle.sh                         ' >>/etc/init.d/metasploit
+            echo '                                                   ' >>/etc/init.d/metasploit
+            echo 'exec /opt/metasploit/ctlscript.sh "$@"             ' >>/etc/init.d/metasploit
+            chmod 755 /etc/init.d/metasploit
+        fi
+
+        if ! gem list --local 2>/dev/null|grep -q ruby-oci8
+        then
+            gem install ruby-oci8 >/dev/null 2>&1
+        fi
+    fi
+
     return 0
 }
 ################################################################################
@@ -889,19 +1023,24 @@ function otherNmaps()
     udpports="U:$(joinBy , "${UDPPORTS[@]}")"
     scanports=$(joinBy , $tcpports $udpports)
 
-    ( timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET |grep -q '|' \
+    ( timeout --kill-after=10 --foreground 28800 \
+        nmap -T3 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET 2>&1 \
+        |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ajp-brute ) &
 
-    ( timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET |grep -q '|' \
+    ( timeout --kill-after=10 --foreground 28800 \
+        nmap -T3 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET 2>&1 \
+        |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-xmpp-brute ) &
 
-    ( timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET |grep -q '|' 
+    ( timeout --kill-after=10 --foreground 28800 \
+        nmap -T3 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET >/dev/null 2>&1 
         if grep -q '|' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute
         then
-            for sid in $(awk '/^|/ {print $2}' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute |grep -v oracle-sid-brute)
+            for sid in $(awk '/^\|/ {print $2}' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute |grep -v oracle-sid-brute)
             do
-                timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET &
-                timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script oracle-enum-users --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET &
+                timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET >/dev/null 2>&1 &
+                timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script oracle-enum-users --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET >/dev/null 2>&1 &
             done
         else
             rm -f "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute 
@@ -941,10 +1080,10 @@ function openvasScan()
     if ! omp -u $ovusername -w $ovpassword -g >/dev/null 2>&1
     then
         echo "$BORDER"
-        echo "WARNING: UNABLE TO CONNECT TO OPENVAS"
-        echo "If you need to install OpenVas, run apt-get install -y greenbone-security-assistant greenbone-security-assistant-common openvas openvas-cli openvas-manager openvas-manager-common openvas-scanner"
-        echo "Then run openvas-check-setup and follow the instructions until it says everything is working."
-        echo "Also change the username/password in the openvasScan function of this script."
+        echo "# WARNING: UNABLE TO CONNECT TO OPENVAS"
+        echo "# If you need to install OpenVas, run apt-get install -y greenbone-security-assistant greenbone-security-assistant-common openvas openvas-cli openvas-manager openvas-manager-common openvas-scanner"
+        echo "# Then run openvas-check-setup and follow the instructions until it says everything is working."
+        echo "# Also change the username/password in the openvasScan function of this script."
         echo "$BORDER"
         echo "Continuing without OpenVAS..."
         return 1
@@ -1013,7 +1152,7 @@ function snmpScan()
         /usr/share/seclists/Discovery/SNMP/snmp.txt \
         /usr/share/routersploit/routersploit/resources/wordlists/snmp.txt \
         /usr/share/wordlists/metasploit/snmp_default_pass.txt \
-        |egrep -v '^#'|sort -u )
+        |dos2unix -f |egrep -v '^#'|sort -u )
     do
         echo "snmp-check -c '$community' $IP 2>&1 \
             |egrep -v '^snmp-check |^Copyright |SNMP request timeout' \
@@ -1404,7 +1543,20 @@ function dnsScan()
 function ikeScan()
 {
     local port=$1
-    timeout --kill-after=10 --foreground 90 ike-scan -d $port $TARGET >>"$RECONDIR"/${TARGET}.${port}.ike-scan 2>&1 
+
+    timeout --kill-after=10 --foreground 90 \
+        ike-scan -M -d $port $TARGET >>"$RECONDIR"/${TARGET}.${port}.ike-scan 2>&1 
+
+    timeout --kill-after=10 --foreground 90 \
+        ike-scan -d $port -A -M -P"$RECONDIR"/${TARGET}.${port}.ike-scan.key $TARGET \
+        >>"$RECONDIR"/${TARGET}.${port}.ike-scan.key.out 2>&1 
+
+    if [[ -f "$RECONDIR"/${TARGET}.${port}.ike-scan.key ]]
+    then
+        timeout --kill-after=10 --foreground 28800 \
+            psk-crack -d /usr/share/wordlists/rockyou.txt "$RECONDIR"/${TARGET}.${port}.ike-scan.key \
+            >>"$RECONDIR"/${TARGET}.${port}.ike-scan.key.crack 2>&1
+    fi
 
     return 0
 }
@@ -1511,6 +1663,36 @@ function mysqlScan()
 ################################################################################
 
 ################################################################################
+function oracleScan()
+{
+    local port=$1
+    local file="/usr/share/wordlists/metasploit/sid.txt"
+    local sid
+
+    timeout --kill-after=10 --foreground 14400 hydra -I \
+        -P $file -u -t 5 -s $port $TARGET oracle-sid \
+        >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
+
+    # DISABLED BY DEFAULT.
+    # This will likely lockout accounts
+    #
+    # [1580][oracle-sid] host: blah.dca.somewhere.net   login: blahdb
+    #for sid in $(cat "$RECONDIR"/${TARGET}.$service.$port.hydra \
+    #    |awk '/oracle-sid.*login: / {print $5}')
+    #do
+    #    timeout --kill-after=10 --foreground 14400 \
+    #        nmap -T4 -Pn -p $port --script oracle-brute \
+    #        --script-args oracle-brute.sid=$sid \
+    #        --script-args brute.credfile="$RECONDIR"/tmp/defaultoracleuserpass.nmap \
+    #        -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute.${sid} \
+    #        $TARGET 
+    #done
+
+    return 0
+}
+################################################################################
+
+################################################################################
 function passHydra()
 {
     local port=$1
@@ -1556,7 +1738,7 @@ function doHydra()
         then
             timeout --kill-after=10 --foreground 28800 hydra -I \
                 -C $file \
-                -u -t 1 -s $port $TARGET $service \
+                -u -t 3 -s $port $TARGET $service \
                 >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
         else
             echo "ERROR in doHydra: file not found: $file"
@@ -2126,6 +2308,7 @@ function fuzzURLs()
     local line
     local inside
     local row=()
+    local fuzzdict
 
     mkdir -p "$RECONDIR"/${TARGET}.wfuzz/raws >/dev/null 2>&1
 
@@ -2254,15 +2437,33 @@ function fuzzURLs()
             post="-d \"$post\""
         fi
 
-        timeout --kill-after=10 --foreground 300 \
-            wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/sql_inj.txt $post "$url" \
-            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.sql.wfuzz.${i}.html 2>&1
-        timeout --kill-after=10 --foreground 300 \
-            wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt $post "$url" \
-            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtnix.wfuzz.${i}.html 2>&1
-        timeout --kill-after=10 --foreground 300 \
-            wfuzz -o html --hc 404 -w /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt $post "$url" \
-            >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.dtwin.wfuzz.${i}.html 2>&1
+        for fuzzdict in /usr/share/wfuzz/wordlist/vulns/sql_inj.txt \
+            /usr/share/wfuzz/wordlist/vulns/sql_inj.txt \
+            /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt \
+            /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt \
+            /usr/share/seclists/Fuzzing/DB2Enumeration.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/Generic-SQLi.txt \
+            /usr/share/seclists/Fuzzing/LDAP.Fuzzinging.txt \
+            /usr/share/seclists/Fuzzing/MSSQL-Enumeration.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/NoSQL.txt \
+            /usr/share/seclists/Fuzzing/Oracle.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/Postgres-Enumeration.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/SSI-Injection-JHADDIX.txt \
+            /usr/share/seclists/Fuzzing/XSS-BYPASS-STRINGS-BRUTELOGIC.txt \
+            /usr/share/seclists/Fuzzing/XSS-JHADDIX.txt \
+            /usr/share/seclists/Fuzzing/XSS-RSNAKE-.txt \
+            /usr/share/seclists/Fuzzing/XSS-STRINGS-BRUTELOGIC.txt \
+            /usr/share/seclists/Fuzzing/XXE-Fuzzing.txt 
+        do
+            if [[ ! -f "$fuzzdict" ]]
+            then
+                echo "ERROR: fuzz dictionary file not found: $fuzzdict"
+                continue
+            fi
+            timeout --kill-after=10 --foreground 900 \
+                wfuzz -o html --hc 404 -t 15 -w $fuzzdict $post "$url" \
+                >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.${fuzzdict##*/}.wfuzz.${i}.html 2>&1
+        done
 
         # sometimes timeout command forks badly on exit
         pkill -t $TTY -f wfuzz >/dev/null 2>&1
@@ -2639,6 +2840,7 @@ function msfRMIScan()
 
     timeout --kill-after=10 --foreground 3600 \
         /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.rmi.msf.raw >/dev/null 2>&1
+
     cat "$RECONDIR"/tmp/${TARGET}.rmi.msf.raw 2>&1 \
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.rmi.msf
@@ -2698,6 +2900,7 @@ function msfHttpScan()
 
     timeout --kill-after=10 --foreground 28800 \
         /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.http.msf.raw >/dev/null 2>&1
+
     cat "$RECONDIR"/tmp/${TARGET}.http.msf.raw 2>&1 \
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.http.msf
@@ -2757,6 +2960,7 @@ function msfHPScan()
 
     timeout --kill-after=10 --foreground 28800 \
         /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.hp.msf.raw >/dev/null 2>&1
+
     cat "$RECONDIR"/tmp/${TARGET}.hp.msf.raw 2>&1 \
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.hp.msf
@@ -2816,6 +3020,7 @@ function msfSapScan()
 
     timeout --kill-after=10 --foreground 14400 \
         /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.sap.msf.raw >/dev/null 2>&1
+
     cat "$RECONDIR"/tmp/${TARGET}.sap.msf.raw 2>&1 \
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.sap.msf
@@ -2888,6 +3093,7 @@ function msfCiscoScan()
 
     timeout --kill-after=10 --foreground 14400 \
         /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.cisco.msf.raw >/dev/null 2>&1
+
     cat "$RECONDIR"/tmp/${TARGET}.cisco.msf.raw 2>&1 \
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.cisco.msf
@@ -2902,7 +3108,7 @@ function tnscmd10gScan()
     local port=$1
 
     timeout --kill-after=10 --foreground 3600 \
-        tnscmd10g -h ${TARGET} -p port >"$RECONDIR"/${TARGET}.oracle.tnscmd10g.$port 2>&1
+        tnscmd10g -h ${TARGET} -p $port >"$RECONDIR"/${TARGET}.oracle.tnscmd10g.$port 2>&1
 
     return 0
 }

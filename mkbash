@@ -153,15 +153,37 @@ function mkprobe()
 
     echo "##################################################" 
     echo "# FIND PASSW FILES"
-    echo "# OUTPUT TO /tmp/passwfiles.$$"
-    find /var /opt /usr -type f -iname '*passw*' 2>/dev/null |egrep -v '/usr/share/|/usr/include|/usr/sbin|/usr/bin' >>/tmp/passwfiles.$$ 2>&1
-    find /etc -type f -iname '*passw*' >>/tmp/passwfiles.$$ 2>/dev/null
+    echo "# OUTPUT TO /tmp/passwfiles"
+    find /var /opt /usr -type f -iname '*passw*' 2>/dev/null |egrep -v '/usr/share/|/usr/include|/usr/sbin|/usr/bin' >>/tmp/passwfiles 2>&1
+    find /etc -type f -iname '*passw*' >>/tmp/passwfiles 2>/dev/null
 
     echo "##################################################" 
     echo "# PASSW IN /ETC FILES"
-    echo "# OUTPUT TO /tmp/etcpassw.$$"
-    find /etc -type f -exec grep -i passw {} \; >>/tmp/etcpassw.$$ 2>/dev/null 
+    echo "# OUTPUT TO /tmp/etcpassw"
+    find /etc -type f -exec grep -i passw {} \; >>/tmp/etcpassw 2>/dev/null 
 
+    echo "##################################################" 
+    echo "# FIND ORAPWORCL FILES AND DUMP HASHES"
+    echo "# OUTPUT TO /tmp/orapworcl"
+    # https://laurent-leturgez.com/2017/12/15/brute-forcing-the-oracle-password-file/
+    # https://github.com/lolo115/oracrack
+    for i in $(find /etc /opt/ora* /home -type f -name orapworcl)
+    do
+        echo "If 10g, sys hash is second field" >>/tmp/orapworcl
+        xxd -c16 -g0 -s +0x0484 -l 16 "$i" >>/tmp/orapworcl 2>&1
+
+        echo "If 11g, sys hash is first field" >>/tmp/orapworcl
+        xxd -c30 -g0 -s +0x04ac -l 30 "$i" >>/tmp/orapworcl 2>&1
+
+        echo "First part, 20 first bytes, SHA1 digest" >>/tmp/orapworcl
+        xxd -c20 -g0 -s +0x04ac -l 20 "$i" >>/tmp/orapworcl 2>&1
+
+        echo "Second part, 10 next bytes, Salt" >>/tmp/orapworcl
+        xxd -c10 -g0 -s +0x4C0  -l 10 "$i" >>/tmp/orapworcl 2>&1
+
+        echo "If 12c, sys hash is first field" >>/tmp/orapworcl
+        xxd -c80 -g0 -s +0x04CA -l 80 "$i" >>/tmp/orapworcl 2>&1
+    done
 }
 
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180606 Kirby
+# 20180607 Kirby
 
 umask 077
 
@@ -117,7 +117,7 @@ function MAIN()
                 continue
             fi
 
-            if [[ $version =~ .... ]]
+            if [[ $version =~ ^[A-Za-z]... ]]
             then
                 sstitle=${version%% *}
                 sstitle=${sstitle%%/*}

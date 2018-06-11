@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180607 Kirby
+# 20180611 Kirby
 
 umask 077
 
@@ -906,6 +906,9 @@ function buildEnv()
     if [[ ! -d "$icdir" ]] \
     && ls /tmp/instantclient-*-linux.*.zip >/dev/null 2>&1
     then
+        echo "$BORDER"
+        echo "# Found instantclient files and now installing"
+        echo "$BORDER"
         mkdir -p /opt/oracle >/dev/null 2>&1
         for file in /tmp/instantclient-*.zip
         do
@@ -1195,7 +1198,7 @@ function basicEyeWitness()
     fi
     screen -dmS ${TARGET}.ew.$RANDOM timeout --kill-after=10 --foreground 3600 \
         eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.basicEyeWitness \
-        --no-dns --no-prompt --all-protocols -x "$RECONDIR"/${TARGET}.xml
+        --no-dns --no-prompt --headless -x "$RECONDIR"/${TARGET}.xml
 
     return 0
 }
@@ -1333,6 +1336,7 @@ function routersploitScan()
             cat "$RECONDIR"/tmp/routersploitscript.$service \
                 |timeout --kill-after 10 --foreground 28800 routersploit 2>&1 \
                 |sed -r "s/\x1B\[(([0-9]{1,2})?(;)?([0-9]{1,2})?)?[m,K,H,f,J]//g" \
+                |strings -a \
                 > "$RECONDIR"/${TARGET}.routersploit.$service 2>&1
             ) &
         fi
@@ -2679,7 +2683,7 @@ function scanURLs()
 
     screen -dmS ${TARGET}.urlsew.$RANDOM timeout --kill-after=10 --foreground 28800 \
         eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.urlsEyeWitness \
-        --no-dns --no-prompt --all-protocols -f "$RECONDIR"/${TARGET}.urls
+        --no-dns --no-prompt --headless -f "$RECONDIR"/${TARGET}.urls
 
     # run whatweb on top dirs
     for url in $(egrep '/$' "$RECONDIR"/${TARGET}.urls |egrep -v '/./$|/../$')

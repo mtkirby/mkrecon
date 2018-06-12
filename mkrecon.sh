@@ -603,6 +603,10 @@ function MAIN()
     
     if [[ -f "$RECONDIR"/${TARGET}.urls ]]
     then
+        echo "starting zapScan"
+        echo "... outputs $RECONDIR/${TARGET}.zap.html"
+        zapScan &
+
         echo "starting getHeaders"
         echo "... outputs $RECONDIR/${TARGET}.headers"
         getHeaders &
@@ -702,7 +706,7 @@ function buildEnv()
     local pkg
     local icdir
     local testdir
-    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan john joomscan jq ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet"
+    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     for pkg in $pkgs
     do
@@ -1198,7 +1202,7 @@ function basicEyeWitness()
     fi
     screen -dmS ${TARGET}.ew.$RANDOM timeout --kill-after=10 --foreground 3600 \
         eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.basicEyeWitness \
-        --no-dns --no-prompt --headless -x "$RECONDIR"/${TARGET}.xml
+        --no-dns --no-prompt --all-protocols -x "$RECONDIR"/${TARGET}.xml
 
     return 0
 }
@@ -2092,6 +2096,54 @@ function webDiscover()
     do
         echo "${url%\?*}" >> "$RECONDIR"/${TARGET}.dirburls.401
     done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function zapScan()
+{
+    local url
+    local port
+
+    if ! which zap-cli >/dev/null 2>&1
+    then
+        echo "Installing zap-cli"
+        pip install --upgrade zapcli >/dev/null 2>&1
+    fi
+
+    pip install --upgrade-strategy=eager zapcli >/dev/null 2>&1 
+
+    # Start a new zap session.  We don't want to interfere with another session
+    for port in {8091..8199}
+    do 
+        if ! zap-cli --api-key notMyPassword -p $port status 2>&1|grep -q "ZAP is running"
+        then
+            echo "Starting zap proxy on port $port in screen session"
+            screen -dmS zap${port} /usr/share/zaproxy/zap.sh -daemon -newsession "$RECONDIR"/tmp/zapsession -host localhost -port $port -config api.key=notMyPassword
+            sleep 180
+            break
+        fi
+    done
+
+    if zap-cli --api-key notMyPassword -p $port status 2>&1 |grep -q "ZAP is not running"
+    then
+        echo "Failed to start zap proxy daemon"
+        return 1
+    fi
+
+    for url in $(cat "$RECONDIR"/${TARGET}.urls)
+    do
+        zap-cli --api-key notMyPassword -p $port open-url $url >/dev/null 2>&1
+    done
+    for url in $(cat "$RECONDIR"/${TARGET}.urls)
+    do
+        zap-cli --api-key notMyPassword -p $port active-scan $url >/dev/null 2>&1
+    done
+    zap-cli --api-key notMyPassword -p $port report --output "$RECONDIR"/${TARGET}.zap.html --output-format html >/dev/null 2>&1
+    sleep 60
+    screen -ls zap${port} |grep zap${port} |awk '{print $1}'|cut -d'.' -f1 |xargs kill
 
     return 0
 }

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180611 Kirby
+# 20180612 Kirby
 
 umask 077
 
@@ -1900,13 +1900,36 @@ function elasticsearchScan()
 function redisScan()
 {
     local port=$1
-    local i
+    local db
 
-    for i in {0..16}
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.redis.${port}
+    echo "Querying info for  database $db" >> "$RECONDIR"/${TARGET}.redis.${port}
+    echo 'info' |timeout --kill-after=10 --foreground 90 redis-cli -h $TARGET -p $port \
+        |strings -a \
+        >> "$RECONDIR"/${TARGET}.redis.${port} 2>&1
+
+    for db in {0..16}
     do
-        timeout --kill-after=10 --foreground 90 redis-cli -h $TARGET -p $port -n $i --scan \
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.redis.${port}
+        echo "Testing database $db" >> "$RECONDIR"/${TARGET}.redis.${port}
+        timeout --kill-after=10 --foreground 90 redis-cli -h $TARGET -p $port -n $db --scan \
+            >> "$RECONDIR"/${TARGET}.redis.${port} 2>&1
+
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.redis.${port}
+        echo "Querying bigkeys for database $db" >> "$RECONDIR"/${TARGET}.redis.${port}
+        timeout --kill-after=10 --foreground 90 redis-cli -h $TARGET -p $port -n $db --bigkeys |tail -n +7 \
             >> "$RECONDIR"/${TARGET}.redis.${port} 2>&1
     done
+
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.redis.${port}
+    echo "Querying client list for database $db" >> "$RECONDIR"/${TARGET}.redis.${port}
+    echo 'client list' |timeout --kill-after=10 --foreground 90 redis-cli -h $TARGET -p $port \
+        >> "$RECONDIR"/${TARGET}.redis.${port} 2>&1
+
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.redis.${port}.monitor
+    echo "Running monitor for database $db" >> "$RECONDIR"/${TARGET}.redis.${port}.monitor
+    echo 'monitor' |timeout --kill-after=60 --foreground 60 redis-cli -h $TARGET -p $port \
+        >> "$RECONDIR"/${TARGET}.redis.${port}.monitor 2>&1
 
     return 0
 }

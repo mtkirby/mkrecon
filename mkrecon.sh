@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180612 Kirby
+# 20180613 Kirby
 
 umask 077
 
@@ -117,7 +117,8 @@ function MAIN()
                 continue
             fi
 
-            if [[ $version =~ ^[A-Za-z]... ]]
+            if [[ $version =~ ^[A-Za-z]... ]] \
+            && ! grep -q "SEARCHING FOR $version" "$RECONDIR"/${TARGET}.searchsploit
             then
                 sstitle=${version%% *}
                 sstitle=${sstitle%%/*}
@@ -319,6 +320,19 @@ function MAIN()
                 rshBrute &
             fi
         
+            # kafka
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service =~ kafka || $service =~ unknown ]] 
+            then
+                if kafkacat -b $TARGET:$port -L >/dev/null 2>&1
+                then
+                    echo "starting kafkaScan"
+                    echo "... outputs $RECONDIR/${TARGET}.kafkacat-L.\$port"
+                    echo "... outputs $RECONDIR/${TARGET}.kafkacat-\$port-\$topic"
+                    kafkaScan $port &
+                fi
+            fi
+    
             # nfs
             if [[ $protocol == 'tcp' ]] \
             && [[ $service =~ mountd || $service =~ nfs ]] 
@@ -644,10 +658,10 @@ function MAIN()
     jobscount=0
     while jobs |grep -q Running
     do
-        echo "Jobs are still running.  Waiting... $jobscount out of 480 minutes"
+        echo "Jobs are still running.  Waiting... $jobscount out of 720 minutes"
         jobs -l
         (( jobscount++ ))
-        if [[ "$jobscount" -gt 480 ]]
+        if [[ "$jobscount" -gt 720 ]]
         then
             echo "killing jobs"
             killHangs
@@ -706,7 +720,7 @@ function buildEnv()
     local pkg
     local icdir
     local testdir
-    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
+    local pkgs="alien bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     for pkg in $pkgs
     do
@@ -1030,40 +1044,40 @@ function otherNmaps()
     udpports="U:$(joinBy , "${UDPPORTS[@]}")"
     scanports=$(joinBy , $tcpports $udpports)
 
-    ( timeout --kill-after=10 --foreground 28800 \
+    ( timeout --kill-after=10 --foreground 39600 \
         nmap -T3 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET 2>&1 \
         |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ajp-brute ) &
 
-    ( timeout --kill-after=10 --foreground 28800 \
+    ( timeout --kill-after=10 --foreground 39600 \
         nmap -T3 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET 2>&1 \
         |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-xmpp-brute ) &
 
-    ( timeout --kill-after=10 --foreground 28800 \
+    ( timeout --kill-after=10 --foreground 39600 \
         nmap -T3 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET >/dev/null 2>&1 
         if grep -q '|' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute
         then
             for sid in $(awk '/^\|/ {print $2}' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute |grep -v oracle-sid-brute)
             do
-                timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET >/dev/null 2>&1 &
-                timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -p $scanports --script oracle-enum-users --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET >/dev/null 2>&1 &
+                timeout --kill-after=10 --foreground 39600 nmap -T3 -Pn -p $scanports --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET >/dev/null 2>&1 &
+                timeout --kill-after=10 --foreground 39600 nmap -T3 -Pn -p $scanports --script oracle-enum-users --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET >/dev/null 2>&1 &
             done
         else
             rm -f "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute 
         fi
     ) &
 
-    ( timeout --kill-after=10 --foreground 28800 nmap -T3 -Pn -sU --script ipmi-brute -p 623 -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET |grep -q '|' \
+    ( timeout --kill-after=10 --foreground 39600 nmap -T3 -Pn -sU --script ipmi-brute -p 623 -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute ) &
 
-    screen -dmS ${TARGET}.nmap-auth.$RANDOM timeout --kill-after=10 --foreground 28800 \
+    screen -dmS ${TARGET}.nmap-auth.$RANDOM timeout --kill-after=10 --foreground 39600 \
         nmap -T3 -Pn -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
 
-    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM timeout --kill-after=10 --foreground 28800 \
+    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM timeout --kill-after=10 --foreground 39600 \
         nmap -T3 -Pn -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
 
-    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM timeout --kill-after=10 --foreground 28800 \
+    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM timeout --kill-after=10 --foreground 39600 \
         nmap -T3 -Pn -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
     
     return 0
@@ -1338,7 +1352,7 @@ function routersploitScan()
             (
             cd "$RECONDIR"/tmp/routersploitscript.$service.d
             cat "$RECONDIR"/tmp/routersploitscript.$service \
-                |timeout --kill-after 10 --foreground 28800 routersploit 2>&1 \
+                |timeout --kill-after 10 --foreground 39600 routersploit 2>&1 \
                 |sed -r "s/\x1B\[(([0-9]{1,2})?(;)?([0-9]{1,2})?)?[m,K,H,f,J]//g" \
                 |strings -a \
                 > "$RECONDIR"/${TARGET}.routersploit.$service 2>&1
@@ -1365,6 +1379,29 @@ function rshBrute()
     do
         timeout --kill-after=10 --foreground 900 netkit-rsh -l $login $TARGET id -a 2>&1 |grep -v 'Permission denied' \
             >>"$RECONDIR"/${TARGET}.rsh 
+    done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function kafkaScan()
+{
+    local port=$1
+    local topic
+
+    timeout --kill-after=10 --foreground 90 \
+        kafkacat -b $TARGET:$port -L \
+        > "$RECONDIR"/${TARGET}.kafkacat-L.$port 2>&1
+
+    for topic in $(kafkacat -b $TARGET:$port -L \
+        |awk '/topic / {print $2}' |cut -d'"' -f2 |sort -u)
+    do
+        timeout --kill-after=10 --foreground 90 \
+            kafkacat -C -b $TARGET:$port -t $topic -o beginning -c 1 -e 2>&1 \
+            |strings -a \
+            > "$RECONDIR"/${TARGET}.kafkacat-${port}-${topic} 2>&1
     done
 
     return 0
@@ -1561,7 +1598,7 @@ function ikeScan()
 
     if [[ -f "$RECONDIR"/${TARGET}.${port}.ike-scan.key ]]
     then
-        timeout --kill-after=10 --foreground 28800 \
+        timeout --kill-after=10 --foreground 39600 \
             psk-crack -d /usr/share/wordlists/rockyou.txt "$RECONDIR"/${TARGET}.${port}.ike-scan.key \
             >>"$RECONDIR"/${TARGET}.${port}.ike-scan.key.crack 2>&1
     fi
@@ -1713,7 +1750,7 @@ function passHydra()
     do
         if [[ -f "$file" ]]
         then
-            timeout --kill-after=10 --foreground 28800 hydra -I \
+            timeout --kill-after=10 --foreground 39600 hydra -I \
                 -P $file \
                 -u -t 1 -s $port $TARGET $service \
                 >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
@@ -1744,7 +1781,7 @@ function doHydra()
     do
         if [[ -f "$file" ]]
         then
-            timeout --kill-after=10 --foreground 28800 hydra -I \
+            timeout --kill-after=10 --foreground 39600 hydra -I \
                 -C $file \
                 -u -t 3 -s $port $TARGET $service \
                 >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
@@ -1941,12 +1978,14 @@ function ldapScan()
     local port=$1
     local context
 
-    timeout --kill-after=10 --foreground 120 ldapsearch -h $TARGET -p $port -x -s base \
+    timeout --kill-after=10 --foreground 120 \
+        ldapsearch -h $TARGET -p $port -x -s base \
         >> "$RECONDIR"/${TARGET}.ldap.${port} 2>&1
 
     for context in $(awk '/^namingContexts: / {print $2}' "$RECONDIR"/${TARGET}.ldap.${port})
     do
-        timeout --kill-after=10 --foreground 300 ldapsearch -h $TARGET -p $port -x -b "$context" \
+        timeout --kill-after=10 --foreground 300 \
+            ldapsearch -h $TARGET -p $port -x -b "$context" \
             >> "$RECONDIR"/${TARGET}.ldap.${port}.${context} 2>&1
     done
 
@@ -2129,6 +2168,7 @@ function zapScan()
 {
     local url
     local port
+    local epoch=$(date +"%s")
 
     if ! which zap-cli >/dev/null 2>&1
     then
@@ -2158,14 +2198,19 @@ function zapScan()
 
     for url in $(cat "$RECONDIR"/${TARGET}.urls)
     do
+        # stop and report after 11 hours
+        if [[ "$(date +"%s")" -gt "$(($epoch + 39600))" ]]
+        then
+            break
+        fi
         zap-cli --api-key notMyPassword -p $port open-url $url >/dev/null 2>&1
-    done
-    for url in $(cat "$RECONDIR"/${TARGET}.urls)
-    do
         zap-cli --api-key notMyPassword -p $port active-scan $url >/dev/null 2>&1
     done
+
     zap-cli --api-key notMyPassword -p $port report --output "$RECONDIR"/${TARGET}.zap.html --output-format html >/dev/null 2>&1
+
     sleep 60
+
     screen -ls zap${port} |grep zap${port} |awk '{print $1}'|cut -d'.' -f1 |xargs kill
 
     return 0
@@ -2349,19 +2394,6 @@ function cewlCrawl()
     cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewl 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.cewl
     cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlemail 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.cewlemail
     cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlmeta 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.cewlmeta
-
-    return 0
-}
-################################################################################
-
-################################################################################
-function hydraPost()
-{
-
-
-    # incorrect invalid failure failed "try again" wrong forgotten
-
-    # hydra 192.168.1.69 http-form-post "/w3af/bruteforce/form_login/dataReceptor.php:user=^USER^&pass=^PASS^:Bad login" -L users.txt -P pass.txt -t 10 -w 30 -o hydra-http-post-attack.txt
 
     return 0
 }
@@ -2756,7 +2788,7 @@ function scanURLs()
 {
     local url
 
-    screen -dmS ${TARGET}.urlsew.$RANDOM timeout --kill-after=10 --foreground 28800 \
+    screen -dmS ${TARGET}.urlsew.$RANDOM timeout --kill-after=10 --foreground 39600 \
         eyewitness --threads 1 -d "$RECONDIR"/${TARGET}.urlsEyeWitness \
         --no-dns --no-prompt --headless -f "$RECONDIR"/${TARGET}.urls
 
@@ -2977,7 +3009,7 @@ function msfHttpScan()
     done
     echo "exit" >> "$cmdfile"
 
-    timeout --kill-after=10 --foreground 28800 \
+    timeout --kill-after=10 --foreground 39600 \
         /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.http.msf.raw >/dev/null 2>&1
 
     cat "$RECONDIR"/tmp/${TARGET}.http.msf.raw 2>&1 \
@@ -3037,7 +3069,7 @@ function msfHPScan()
     done
     echo "exit" >> "$cmdfile"
 
-    timeout --kill-after=10 --foreground 28800 \
+    timeout --kill-after=10 --foreground 39600 \
         /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.hp.msf.raw >/dev/null 2>&1
 
     cat "$RECONDIR"/tmp/${TARGET}.hp.msf.raw 2>&1 \
@@ -3270,12 +3302,12 @@ function badKeyScan()
 function crackers()
 {
     screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack \
-        timeout --kill-after=10 --foreground 28800 \
+        timeout --kill-after=10 --foreground 39600 \
         ncrack -iN "$RECONDIR"/${TARGET}.nmap -U "$RECONDIR"/tmp/users.lst \
         -P "$RECONDIR"/tmp/passwds.lst -v -g CL=2,cr=5,to=8h
 
     # brutespray uses service-specific wordlists in /usr/share/brutespray/wordlist
-    timeout --kill-after=10 --foreground 28800 \
+    timeout --kill-after=10 --foreground 39600 \
         brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c -o "$RECONDIR"/${TARGET}.brutespray.d >/dev/null 2>&1
 
     return 0

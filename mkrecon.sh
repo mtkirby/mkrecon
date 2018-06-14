@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180613 Kirby
+# 20180614 Kirby
 
 umask 077
 
@@ -327,8 +327,7 @@ function MAIN()
                 if kafkacat -b $TARGET:$port -L >/dev/null 2>&1
                 then
                     echo "starting kafkaScan"
-                    echo "... outputs $RECONDIR/${TARGET}.kafkacat-L.\$port"
-                    echo "... outputs $RECONDIR/${TARGET}.kafkacat-\$port-\$topic"
+                    echo "... outputs $RECONDIR/${TARGET}.${port}.kafkacat"
                     kafkaScan $port &
                 fi
             fi
@@ -1393,15 +1392,17 @@ function kafkaScan()
 
     timeout --kill-after=10 --foreground 90 \
         kafkacat -b $TARGET:$port -L \
-        > "$RECONDIR"/${TARGET}.kafkacat-L.$port 2>&1
+        >> "$RECONDIR"/${TARGET}.${port}.kafkacat 2>&1
 
     for topic in $(kafkacat -b $TARGET:$port -L \
         |awk '/topic / {print $2}' |cut -d'"' -f2 |sort -u)
     do
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.kafkacat-${port} 2>&1
+        echo "# PULLING TOPIC $topic" >> "$RECONDIR"/${TARGET}.kafkacat-${port} 2>&1
         timeout --kill-after=10 --foreground 90 \
             kafkacat -C -b $TARGET:$port -t $topic -o beginning -c 1 -e 2>&1 \
             |strings -a \
-            > "$RECONDIR"/${TARGET}.kafkacat-${port}-${topic} 2>&1
+            >> "$RECONDIR"/${TARGET}.${port}.kafkacat 2>&1
     done
 
     return 0

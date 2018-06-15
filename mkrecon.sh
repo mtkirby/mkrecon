@@ -321,16 +321,20 @@ function MAIN()
             fi
         
             # kafka
-            if [[ $protocol == 'tcp' ]] \
-            && [[ $service =~ kafka || $service =~ unknown ]] 
+            if [[ $protocol == 'tcp' ]]
             then
+                # nmap cannot yet identify the kafka service
+                echo "... testing $port for kafka"
+
                 if kafkacat -b $TARGET:$port -L >/dev/null 2>&1
                 then
                     echo "starting kafkaScan"
                     echo "... outputs $RECONDIR/${TARGET}.${port}.kafkacat"
+                    echo "... outputs $RECONDIR/${TARGET}.${port}.\$topic.kafkacat"
                     kafkaScan $port &
                 fi
             fi
+
     
             # nfs
             if [[ $protocol == 'tcp' ]] \
@@ -1397,12 +1401,14 @@ function kafkaScan()
     for topic in $(kafkacat -b $TARGET:$port -L \
         |awk '/topic / {print $2}' |cut -d'"' -f2 |sort -u)
     do
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.kafkacat-${port} 2>&1
-        echo "# PULLING TOPIC $topic" >> "$RECONDIR"/${TARGET}.kafkacat-${port} 2>&1
-        timeout --kill-after=10 --foreground 90 \
-            kafkacat -C -b $TARGET:$port -t $topic -o beginning -c 1 -e 2>&1 \
-            |strings -a \
-            >> "$RECONDIR"/${TARGET}.${port}.kafkacat 2>&1
+        if [[ $(timeout --kill-after=10 --foreground 60 kafkacat -C -b $TARGET:$port -t $topic -o beginning -c 1 -e 2>/dev/null |wc -l) -gt 0 ]]
+        then
+            timeout --kill-after=10 --foreground 300 \
+                kafkacat -C -b $TARGET:$port -t $topic -o beginning -c 100 -e 2>/dev/null \
+                |strings -a \
+                |jq -M . \
+                >> "$RECONDIR"/${TARGET}.${port}.${topic}.kafkacat 2>&1
+        fi
     done
 
     return 0

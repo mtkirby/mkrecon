@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180619 Kirby
+# 20180620 Kirby
 
 umask 077
 
@@ -585,6 +585,10 @@ function MAIN()
         echo "... outputs $RECONDIR/${TARGET}/arachni.d"
         arachniScan &
 
+        echo "starting wigScan"
+        echo "... outputs $RECONDIR/${TARGET}.wig"
+        wigScan &
+
         # Enable when trying harder...
         #echo "starting webWords"
         #echo "... outputs $RECONDIR/${TARGET}.webwords"
@@ -634,7 +638,6 @@ function MAIN()
 
         echo "starting scanURLs"
         echo "... outputs $RECONDIR/${TARGET}.whatweb"
-        echo "... outputs $RECONDIR/${TARGET}.wig"
         echo "... outputs $RECONDIR/${TARGET}.wpscan if anything found"
         echo "... outputs $RECONDIR/${TARGET}.joomscan if anything found"
         echo "... outputs $RECONDIR/${TARGET}.fimap if anything found"
@@ -648,6 +651,7 @@ function MAIN()
 
         echo "starting mechDumpURLs"
         echo "... outputs $RECONDIR/${TARGET}.mech-dump"
+        # do not background mech-dump.  There are dependencies in fuzzURLs.
         mechDumpURLs 
 
         echo "starting fuzzURLs"
@@ -672,6 +676,7 @@ function MAIN()
         then
             echo "killing jobs"
             #killHangs
+            #sleep 60
             IFS=$'\n'
             for job in $(jobs -l |awk '{print $2}')
             do
@@ -1084,7 +1089,7 @@ function otherNmaps()
 
     ( timeout --kill-after=10 --foreground 172800 nmap -T3 -Pn -sU -p 623 --script ipmi-brute -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute \
-        ; grep -q 'open|filtered' "$RECONDIR"/${TARGET}.nmap-ipmi-brute \
+        ; grep -q 'open|filtered' "$RECONDIR"/${TARGET}.nmap-ipmi-brute 2>/dev/null \
         && rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute ) &
 
     screen -dmS ${TARGET}.nmap-auth.$RANDOM timeout --kill-after=10 --foreground 172800 \
@@ -2795,6 +2800,31 @@ function getPortFromUrl()
     echo $port
 }
 ################################################################################
+
+################################################################################
+function wigScan()
+{
+    local url
+
+    for url in $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null)
+    do
+        echo "Running wig on $url"
+        echo "... outputs $RECONDIR/$TARGET.wig"
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
+        echo "Testing $url" >> "$RECONDIR"/${TARGET}.wig 
+        timeout --kill-after=10 --foreground 1800 \
+            wig -q -a -d $url 2>&1 \
+            |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
+            |strings -a \
+            >> "$RECONDIR"/${TARGET}.wig 
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
+    done
+
+    return 0
+}
+################################################################################
+
+################################################################################
 function scanURLs()
 {
     local url
@@ -2805,7 +2835,7 @@ function scanURLs()
         --no-dns --no-prompt --headless -f "$RECONDIR"/${TARGET}.urls
 
     # run whatweb on top dirs
-    for url in $(egrep '/$' "$RECONDIR"/${TARGET}.urls |egrep -v '/./$|/../$')
+    for url in $(cat "$RECONDIR"/${TARGET}.urls)
     do
         if [[ "$(echo $url |grep -o '.' |grep -c '/')" -le 4 ]]
         then
@@ -2816,18 +2846,6 @@ function scanURLs()
                 echo '' >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
             fi
         fi
-    done
-
-    for url in $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null)
-    do
-        echo "Running wig on $url"
-        echo "... outputs $RECONDIR/$TARGET.wig"
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
-        echo "Testing $url" >> "$RECONDIR"/${TARGET}.wig 
-        timeout --kill-after=10 --foreground 1800 \
-            wig -q -a -d $url 2>&1 |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-            >> "$RECONDIR"/${TARGET}.wig 
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
     done
 
     # run wpscan on first found wordpress

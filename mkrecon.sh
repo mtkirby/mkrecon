@@ -2152,8 +2152,9 @@ function webDiscover()
         |sed -e "s|\(^https:\)//\(.*\)|\1,,\2|" \
         |sed -e "s|\(^http:\)//\(.*\)|\1,,\2|" \
         |sed -e 's|//*|/|g' \
+        |sed -e 's|/\./||g' \
+        |sed -e 's|/\.\./||g' \
         |sed -e 's|:,,|://|' \
-        |sed -e 's|/$||' \
         |sort -u > /tmp/${TARGET}.urls.raw
 
     # remove duplicates that have standard ports.  e.g. http://target:80/dir -> http://target/dir
@@ -2835,7 +2836,7 @@ function scanURLs()
         --no-dns --no-prompt --headless -f "$RECONDIR"/${TARGET}.urls
 
     # run whatweb on top dirs
-    for url in $(cat "$RECONDIR"/${TARGET}.urls)
+    for url in $(egrep '/$' "$RECONDIR"/${TARGET}.urls)
     do
         if [[ "$(echo $url |grep -o '.' |grep -c '/')" -le 4 ]]
         then

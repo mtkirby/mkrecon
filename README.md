@@ -21,6 +21,7 @@ Usage: ~/mkrecon.sh "IP or hostname"
 Output files are placed in /root/mkrecon/"IP|hostname"
 
 ################################################################################
+
 WHAT MKRECON DOES
 - starts with an nmap scan(with version-detection scripts)
 - runs nmap discovery,safe,exploit,vuln,and auth nse scripts

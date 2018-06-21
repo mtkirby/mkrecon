@@ -598,7 +598,7 @@ function MAIN()
         echo "... outputs $RECONDIR/${TARGET}.robots.txt"
         echo "... outputs $RECONDIR/${TARGET}.robotspider.html"
         echo "... outputs $RECONDIR/${TARGET}.dirburls"
-        echo "... outputs $RECONDIR/${TARGET}.dirburls.401"
+        echo "... outputs $RECONDIR/${TARGET}.urls.401"
         echo "... outputs $RECONDIR/${TARGET}.spider"
         echo "... outputs $RECONDIR/${TARGET}.spider.html"
         echo "... outputs $RECONDIR/${TARGET}.urls"
@@ -619,7 +619,7 @@ function MAIN()
         cewlCrawl &
     fi
     
-    if [[ -f "$RECONDIR"/${TARGET}.dirburls.401 ]]
+    if [[ -f "$RECONDIR"/${TARGET}.urls.401 ]]
     then
         echo "starting hydraScanURLs"
         echo "... outputs $RECONDIR/${TARGET}.hydra if anything found"
@@ -731,7 +731,7 @@ function buildEnv()
     local pkg
     local icdir
     local testdir
-    local pkgs="alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
+    local pkgs="alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     for pkg in $pkgs
     do
@@ -1645,7 +1645,7 @@ function rsyncScan()
 
     if [[ -f  "$RECONDIR"/${TARGET}.${port}.rsync ]]
     then
-        for share in $(cat "$RECONDIR"/${TARGET}.${port}.rsync)
+        for share in $(awk '{print $1}' "$RECONDIR"/${TARGET}.${port}.rsync)
         do
             timeout --kill-after=10 --foreground 600 \
                 rsync --list-only --port=${port%%/*} rsync://$TARGET/$share \
@@ -1780,6 +1780,7 @@ function passHydra()
         if [[ -f "$file" ]]
         then
             timeout --kill-after=10 --foreground 86400 \
+                /usr/bin/time -v \
                 hydra -I -P $file -u -t 1 -s $port $TARGET $service \
                 >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
         else
@@ -1803,6 +1804,7 @@ function doHydra()
     local service=$2
 
     timeout --kill-after=10 --foreground 172800 \
+        /usr/bin/time -v \
         hydra -I -C "$RECONDIR"/tmp/userpass.lst -u -t 2 -s $port $TARGET $service \
         >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
 
@@ -2184,7 +2186,20 @@ function webDiscover()
         |awk '{print $2}' \
         |sort -u)
     do
-        echo "${url%\?*}" >> "$RECONDIR"/${TARGET}.dirburls.401
+        echo "${url%\?*}" >> "$RECONDIR"/${TARGET}.urls.401
+    done
+
+    # process all urls for 401's that dirb may have missed
+    for url in $(cat "$RECONDIR"/${TARGET}.urls 2>/dev/null )
+    do
+        if ! egrep -q "^$url$" "$RECONDIR"/${TARGET}.urls.401 >/dev/null 2>&1 \
+        && timeout --kill-after=10 --foreground 900 \
+            wget --tries=20 --retry-connrefused -q -O /dev/null --no-check-certificate -S \
+            -D $TARGET --method=HEAD "$url" 2>&1 \
+            |grep -q '401 Unauthorized' >/dev/null 2>&1
+        then
+            echo "$url" >> "$RECONDIR"/${TARGET}.urls.401
+        fi
     done
 
     return 0
@@ -2212,7 +2227,7 @@ function zapScan()
         if ! zap-cli --api-key notMyPassword -p $port status 2>&1|grep -q "ZAP is running"
         then
             echo "Starting zap proxy on port $port in screen session"
-            screen -dmS zap${port} /usr/share/zaproxy/zap.sh -daemon -newsession "$RECONDIR"/tmp/zapsession -host localhost -port $port -config api.key=notMyPassword
+            screen -dmS ${TARGET}.zap${port} /usr/share/zaproxy/zap.sh -daemon -newsession "$RECONDIR"/tmp/zapsession -host localhost -port $port -config api.key=notMyPassword
             sleep 180
             break
         fi
@@ -2239,7 +2254,7 @@ function zapScan()
 
     sleep 60
 
-    screen -ls zap${port} |grep zap${port} |awk '{print $1}'|cut -d'.' -f1 |xargs kill
+    screen -ls ${TARGET}.zap${port} |grep ${TARGET}.zap${port} |awk '{print $1}'|cut -d'.' -f1 |xargs kill
 
     return 0
 }
@@ -2306,12 +2321,14 @@ function hydraScanURLs()
     local url
     local port
     local commonurl
+    local i=0
+    local jobs=0
 
     # Try to find commonality and just attack the top of the list
     # This will avoid attacking the same type of service on multiple urls
-    for commonurl in $(cat hacklab-owaspbwa.dirburls.401 |sed -e 's|/[^/]*$|/|g' |sort -u)
+    for commonurl in $(cat "$RECONDIR"/${TARGET}.urls.401 |sed -e 's|/[^/]*$|/|g' |sort -u)
     do
-        url=$(grep "$commonurl" hacklab-owaspbwa.dirburls.401 |head -1)
+        url=$(grep "$commonurl" "$RECONDIR"/${TARGET}.urls.401 |head -1)
 
         if [[ "$url" =~ ^https ]]
         then
@@ -2327,26 +2344,35 @@ function hydraScanURLs()
         (
             # Test with default creds from routersploit and metasploit
             echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
-            echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
+            echo "TESTING $url with userpass.lst"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
             timeout --kill-after=10 --foreground 86400 \
+                /usr/bin/time -v \
                 hydra -I -C "$RECONDIR"/tmp/userpass.lst \
                 -u -t 2 $sslflag -s $port $TARGET http-get "$path" \
                 >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
     
             # Test with separate user/pass files
             echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
-            echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
+            echo "TESTING $url with users.lst and passwds.lst"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
             timeout --kill-after=10 --foreground 86400 \
+                /usr/bin/time -v \
                 hydra -I -L "$RECONDIR"/tmp/users.lst -P "$RECONDIR"/tmp/passwds.lst \
                 -e nsr -u -t 5 $sslflag -s $port $TARGET http-get "$path" \
                 >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
     
-            grep -q 'successfully completed' "$RECONDIR"/${TARGET}.hydra/${hydrafile} \
-                && cp -f "$RECONDIR"/${TARGET}.hydra/${hydrafile} "$RECONDIR"/${TARGET}.${hydrafile} 2>/dev/null
+            if grep -q 'successfully completed' "$RECONDIR"/${TARGET}.hydra/${hydrafile}
+            then
+                cp -f "$RECONDIR"/${TARGET}.hydra/${hydrafile} \
+                    "$RECONDIR"/${TARGET}.${hydrafile} 2>/dev/null
+            fi
         ) &
+        let jobs++
     done
-    #remove directory if empty
-    rmdir "$RECONDIR"/${TARGET}.hydra >/dev/null 2>&1
+
+    for (( i=0; i <= jobs; i++ ))
+    do
+        wait
+    done
 
     return 0
 }
@@ -2878,6 +2904,7 @@ function scanURLs()
         timeout --kill-after=10 --foreground 1800 \
             joomscan -ec -r -u "$url" \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
+            |strings -a \
             >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
     done
 

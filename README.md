@@ -1,18 +1,15 @@
 mkrecon is a bash shell script that launches several tools to pentest a single host.
 
+The latest, and freshly patched, version of Kali is required.
+
 Packages you will need to install (in Kali): alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy
 
 If you want to use OpenVAS, change the password variable in the openvasScan function.
 
-If you want to attack Oracle databases, you will need to install the InstantClient libraries.
+If you want to attack Oracle databases, you will need to install the Oracle InstantClient libraries.
 - Goto http://www.oracle.com/technetwork/database/database-technologies/instant-client/downloads/index.html
-- Login to Oracle
 - Select  Instant Client for Linux
-- Select the Accept license radio button
-- Get the latest instantclient-basic-linux.*.zip
-- Get the latest instantclient-jdbc-linux.*.zip
-- Get the latest instantclient-sqlplus-linux.*.zip
-- Get the latest instantclient-sdk-linux.*.zip
+- Get the latest instantclient-basic&jdbc&sqlplus&sdk-linux.*.zips
 - Put all zip files in /tmp
 - mkrecon.sh will auto-install/setup the app when it sees it in /tmp
 
@@ -32,8 +29,7 @@ WHAT MKRECON DOES
 - dirb with multiple dictionaries on all web service ports
 - spider the discovered dirb urls
 - hydra on discovered web directories that require auth (code 401)
-- nikto on all web service ports
-- For any webservice discovered on any port: arachni, whatweb, Joomscan, WPScan, fimap, WAScan, wig, ZAP, sqlmap, skipfish, cewl, davtest, cadaver, exif, metasploit http modules
+- For any webservice discovered on any port: arachni, whatweb, Joomscan, WPScan, fimap, WAScan, nikto, wig, ZAP, sqlmap, skipfish, cewl, davtest, cadaver, exif, and metasploit http modules
 - eyewitness (screenshots) of the discovered web pages
 - routersploit on discovered telnet, ssh, ftp, web services
 - mech-dump of pages with parameters

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180620 Kirby
+# 20180622 Kirby
 
 umask 077
 
@@ -367,6 +367,18 @@ function MAIN()
                 memcacheScan $port &
             fi
         
+            # zookeeper
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service =~ zookeeper ]] 
+            then
+                echo "starting zookeeperScan"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.zookeeper.envi"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.zookeeper.stat"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.zookeeper.req"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.zookeeper.dump"
+                zookeeperScan $port &
+            fi
+        
             # dns
             if [[ $port == '53' ]] \
             && [[ $protocol == 'udp' ]] \
@@ -561,8 +573,19 @@ function MAIN()
 
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
+        echo "starting webDiscover"
+        echo "... outputs $RECONDIR/${TARGET}.robots.txt"
+        echo "... outputs $RECONDIR/${TARGET}.robotspider.html"
+        echo "... outputs $RECONDIR/${TARGET}.dirburls"
+        echo "... outputs $RECONDIR/${TARGET}.urls.401"
+        echo "... outputs $RECONDIR/${TARGET}.spider"
+        echo "... outputs $RECONDIR/${TARGET}.spider.html"
+        echo "... outputs $RECONDIR/${TARGET}.urls"
+        echo "... outputs $RECONDIR/${TARGET}.urls.html"
+        webDiscover 
+
         echo "starting WAScan"
-        echo "... outputs $RECONDIR/${TARGET}.WAScan"
+        echo "... outputs $RECONDIR/${TARGET}.\$port.WAScan"
         WAScan &
 
         echo "starting msfHttpScan"
@@ -593,17 +616,6 @@ function MAIN()
         #echo "starting webWords"
         #echo "... outputs $RECONDIR/${TARGET}.webwords"
         #webWords 
-
-        echo "starting webDiscover"
-        echo "... outputs $RECONDIR/${TARGET}.robots.txt"
-        echo "... outputs $RECONDIR/${TARGET}.robotspider.html"
-        echo "... outputs $RECONDIR/${TARGET}.dirburls"
-        echo "... outputs $RECONDIR/${TARGET}.urls.401"
-        echo "... outputs $RECONDIR/${TARGET}.spider"
-        echo "... outputs $RECONDIR/${TARGET}.spider.html"
-        echo "... outputs $RECONDIR/${TARGET}.urls"
-        echo "... outputs $RECONDIR/${TARGET}.urls.html"
-        webDiscover 
     fi
     
     if [[ -f "$RECONDIR"/${TARGET}.spider ]]
@@ -731,7 +743,7 @@ function buildEnv()
     local pkg
     local icdir
     local testdir
-    local pkgs="alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
+    local pkgs="alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     for pkg in $pkgs
     do
@@ -1782,6 +1794,7 @@ function passHydra()
             timeout --kill-after=10 --foreground 86400 \
                 /usr/bin/time -v \
                 hydra -I -P $file -u -t 1 -s $port $TARGET $service \
+                |strings -a \
                 >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
         else
             echo "ERROR in passHydra: file not found: $file"
@@ -1806,6 +1819,7 @@ function doHydra()
     timeout --kill-after=10 --foreground 172800 \
         /usr/bin/time -v \
         hydra -I -C "$RECONDIR"/tmp/userpass.lst -u -t 2 -s $port $TARGET $service \
+        |strings -a \
         >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
 
 #    if ! grep -q 'successfully completed' "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
@@ -2148,7 +2162,9 @@ function webDiscover()
 
     # combine wget spider and dirb
     cat "$RECONDIR"/${TARGET}.dirburls "$RECONDIR"/${TARGET}.spider 2>/dev/null  \
-        |cut -d'?' -f1|cut -d'%' -f1|cut -d'"' -f1 \
+        |cut -d'?' -f1 \
+        |cut -d'%' -f1 \
+        |cut -d'"' -f1 \
         |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' \
         |sed -e "s|$TARGET//*|$TARGET/|g" \
         |sed -e "s|\(^https:\)//\(.*\)|\1,,\2|" \
@@ -2307,7 +2323,7 @@ function skipfishScan()
         a_urls[${#a_urls[@]}]="$url"
     done
     screen -dmS ${TARGET}.skipfish.$RANDOM \
-        skipfish -k 7:00:00 -g2 -f100 -o "$RECONDIR"/${TARGET}.skipfish ${a_urls[*]}
+        skipfish -k 48:00:00 -g1 -f100 -o "$RECONDIR"/${TARGET}.skipfish ${a_urls[*]}
     return 0
 }
 ################################################################################
@@ -2387,7 +2403,8 @@ function sqlmapScan()
     do
         echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw
         echo "# TESTING $url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw
-        timeout --kill-after=10 --foreground 900 \
+        timeout --kill-after=10 --foreground 1800 \
+            /usr/bin/time -v \
             sqlmap --forms --random-agent --batch --flush-session -o --threads=5 -a --technique=BEUSQ -u "$url" 2>&1 \
             |tail -n +7 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
@@ -2581,7 +2598,7 @@ function fuzzURLs()
         url=$(echo $line|awk '{print $2}')
         wfuzzfile=$(echo ${url//\//,} |cut -d',' -f1-4 |cut -d';' -f1)
 
-        timeout --kill-after=10 --foreground 900 \
+        timeout --kill-after=10 --foreground 1800 \
             wfuzz -o html --hc 404 -t 5 -z file,$RECONDIR/tmp/users.lst \
             -z file,$RECONDIR/tmp/passwds.lst -d $post "$url" \
             >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.logins.wfuzz.${i}.html 2>&1
@@ -2631,7 +2648,7 @@ function fuzzURLs()
                 echo "ERROR: fuzz dictionary file not found: $fuzzdict"
                 continue
             fi
-            timeout --kill-after=10 --foreground 900 \
+            timeout --kill-after=10 --foreground 1800 \
                 wfuzz -o html --hc 404 -t 5 -w $fuzzdict $post "$url" \
                 >> "$RECONDIR"/${TARGET}.wfuzz/raws/${wfuzzfile}.${fuzzdict##*/}.wfuzz.${i}.html 2>&1
         done
@@ -2711,7 +2728,7 @@ function mechDumpURLs()
 
     for url in $(cat "$RECONDIR"/${TARGET}.urls \
         |egrep -v '/./$|/../$' \
-        |egrep -v '/\?' \
+        |egrep -v '/\?C=' \
         |tr -d '\0')
     do
         output=$(timeout --kill-after=10 --foreground 90 mech-dump --absolute --forms "$url" 2>/dev/null)
@@ -2743,12 +2760,14 @@ function davScanURLs()
         # try multiple DAV scans.  None of these are 100% reliable, so try several.
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.davtest 
         echo "TESTING $url" >> "$RECONDIR"/${TARGET}.davtest 
-        timeout --kill-after=10 --foreground 90 davtest -cleanup -url "$url" 2>&1|grep SUCCEED >> "$RECONDIR"/${TARGET}.davtest
+        timeout --kill-after=10 --foreground 90 \
+            davtest -cleanup -url "$url" 2>&1|grep SUCCEED >> "$RECONDIR"/${TARGET}.davtest
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.davtest 
 
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.cadaver 
         echo "TESTING $url" >> "$RECONDIR"/${TARGET}.cadaver 
-        echo ls | timeout --kill-after=10 --foreground 90 cadaver "$url" 2>&1 \
+        echo ls | timeout --kill-after=10 --foreground 90 \
+            cadaver "$url" 2>&1 \
             |egrep -v 'command can only be used when connected to the server.|^Try running|^Could not access|^405 Method|^Connection to' \
             >> "$RECONDIR"/${TARGET}.cadaver
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.cadaver 
@@ -2840,7 +2859,8 @@ function wigScan()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
         echo "Testing $url" >> "$RECONDIR"/${TARGET}.wig 
         timeout --kill-after=10 --foreground 1800 \
-            wig -q -a -d $url 2>&1 \
+            /usr/bin/time -v \
+            wig -q -t 1 -a -d $url 2>&1 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.wig 
@@ -2864,14 +2884,14 @@ function scanURLs()
     # run whatweb on top dirs
     for url in $(egrep '/$' "$RECONDIR"/${TARGET}.urls)
     do
-        if [[ "$(echo $url |grep -o '.' |grep -c '/')" -le 4 ]]
+        if [[ "$(echo $url |grep -o '.' |grep -c '/')" -le 4 ]] \
+        && ! egrep -q "^$url" "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
         then
-            if ! egrep -q "^$url" "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
-            then
-                timeout --kill-after=10 --foreground 1800 whatweb -a3 --color=never "$url" \
-                    >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
-                echo '' >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
-            fi
+            timeout --kill-after=10 --foreground 3600 \
+                whatweb -a3 -t2 --color=never "$url" \
+                |strings -a \
+                >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
+            echo '' >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
         fi
     done
 
@@ -2883,15 +2903,21 @@ function scanURLs()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
         timeout --kill-after=10 --foreground 1800 \
-            wpscan -t 3 --follow-redirection --disable-tls-checks -e \
-            --no-banner --no-color --batch --url "$url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
+            /usr/bin/time -v \
+            wpscan -t3 --follow-redirection --disable-tls-checks -e \
+            --no-banner --no-color --batch --url "$url" \
+            |strings -a \
+            >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
 
         echo "Running wpscan admin crack on $url"
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan
         echo "CRACKING ADMIN FOR URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
         timeout --kill-after=10 --foreground 1800 \
+            /usr/bin/time -v \
             wpscan -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
-            --username admin --url "$url" >> "$RECONDIR"/${TARGET}.wpscan 2>&1
+            --username admin --url "$url" \
+            |strings -a \
+            >> "$RECONDIR"/${TARGET}.wpscan 2>&1
     done
 
     # run joomscan on first found joomla
@@ -2902,6 +2928,7 @@ function scanURLs()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.joomscan
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.joomscan
         timeout --kill-after=10 --foreground 1800 \
+            /usr/bin/time -v \
             joomscan -ec -r -u "$url" \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
@@ -2916,9 +2943,26 @@ function scanURLs()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.fimap
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.fimap
         timeout --kill-after=10 --foreground 1800 \
+            /usr/bin/time -v \
             fimap --force-run -4 -u "$url" 2>&1 \
             |egrep -v '^fimap |^Another fimap|^:: |^Starting harvester|^No links found|^AutoAwesome is done' \
+            |strings -a \
             >> "$RECONDIR"/${TARGET}.fimap
+    done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function zookeeperScan()
+{
+    local port=$1
+    local cmd
+
+    for cmd in envi stat req dump
+    do
+        echo $cmd |ncat ${TARGET} $port >"$RECONDIR"/${TARGET}.${port}.zookeeper.${cmd} 2>&1
     done
 
     return 0
@@ -3294,6 +3338,8 @@ function WAScan()
 {
     local url
     local scan
+    local jobs=0
+    local i
 
     if [[ ! -d /tmp/WAScan ]]
     then
@@ -3312,16 +3358,24 @@ function WAScan()
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
-        echo "$BORDER"  >> "$RECONDIR"/${TARGET}.WAScan
-        echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.WAScan
-        timeout --kill-after=10 --foreground 14400 /tmp/WAScan/wascan.py -n -r --url "$url" 2>&1 \
+        echo "$BORDER"  >> "$RECONDIR"/${TARGET}.${port}.WAScan
+        echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.${port}.WAScan
+        timeout --kill-after=10 --foreground 14400 \
+            /usr/bin/time -v \
+            /tmp/WAScan/wascan.py -n -r --url "$url" 2>&1 \
             |tail -n +11 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
             |uniq \
-            >> "$RECONDIR"/${TARGET}.WAScan 
-        echo "$BORDER"  >> "$RECONDIR"/${TARGET}.WAScan
+            >> "$RECONDIR"/${TARGET}.${port}.WAScan &
+        let jobs++
     done
+
+    for (( i=1; i <= jobs; i++ ))
+    do
+        wait
+    done
+
 
     return 0
 }
@@ -3397,7 +3451,7 @@ function arachniScan()
         let count++
         timeout --kill-after 10 --foreground 172800 \
             arachni --audit-links --audit-forms --audit-ui-forms --audit-ui-inputs --audit-xmls \
-            --audit-jsons --timeout=47:30:0 --output-only-positives --http-request-concurrency=2 \
+            --audit-jsons --timeout=47:30:0 --output-only-positives --http-request-concurrency=1 \
             --report-save-path="$RECONDIR"/tmp/arachni.d $url \
             >"$RECONDIR"/tmp/arachni.$count.out 2>&1 &
     done
@@ -3447,7 +3501,7 @@ function defaultCreds()
     local IFS=$'\n'
     local name
     local defpassfile='/usr/share/seclists/Passwords/Default-Credentials/default-passwords.csv'
-    local logfile="$RECONDIR/${TARGET}.defaultCreds"
+    local logfile="$RECONDIR"/${TARGET}.defaultCreds
 
     for name in $(cat $defpassfile \
         |dos2unix -f |cut -d',' -f1 |tr '[A-Z]' '[a-z]' |sed -e 's/"//g' |sort -u)

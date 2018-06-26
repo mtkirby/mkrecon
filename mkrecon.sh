@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180622 Kirby
+# 20180625 Kirby
 
 umask 077
 
@@ -328,7 +328,7 @@ function MAIN()
 
                 if kafkacat -b $TARGET:$port -L >/dev/null 2>&1
                 then
-                    echo "starting kafkaScan"
+                    echo "starting kafkaScan for port $port"
                     echo "... outputs $RECONDIR/${TARGET}.${port}.kafkacat"
                     echo "... outputs $RECONDIR/${TARGET}.${port}.\$topic.kafkacat"
                     kafkaScan $port &
@@ -362,7 +362,7 @@ function MAIN()
             if [[ $protocol == 'tcp' ]] \
             && [[ $service =~ memcached ]] 
             then
-                echo "starting memcacheScan"
+                echo "starting memcacheScan for port $port"
                 echo "... outputs $RECONDIR/${TARGET}.msf.memcached.${port}.out"
                 memcacheScan $port &
             fi
@@ -371,12 +371,33 @@ function MAIN()
             if [[ $protocol == 'tcp' ]] \
             && [[ $service =~ zookeeper ]] 
             then
-                echo "starting zookeeperScan"
+                echo "starting zookeeperScan for port $port"
                 echo "... outputs $RECONDIR/${TARGET}.${port}.zookeeper.envi"
                 echo "... outputs $RECONDIR/${TARGET}.${port}.zookeeper.stat"
                 echo "... outputs $RECONDIR/${TARGET}.${port}.zookeeper.req"
                 echo "... outputs $RECONDIR/${TARGET}.${port}.zookeeper.dump"
                 zookeeperScan $port &
+            fi
+
+            # mesos
+            # nmap sometimes shows mesos as "unknown", so probe for a page
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $version =~ Mesos ]] \
+            || curl --retry 20 --retry-connrefused -k -s http://${TARGET}:${port}/showme404 2>&1 |grep -q timestamp
+            then
+                echo "starting mesosScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.version"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.env"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.trace"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.health"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.status"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.info"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.flags"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.features"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.dump"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.system-stats"
+                echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.metrics-snapshot"
+                mesosScan $port &
             fi
         
             # dns
@@ -1819,6 +1840,7 @@ function doHydra()
     timeout --kill-after=10 --foreground 172800 \
         /usr/bin/time -v \
         hydra -I -C "$RECONDIR"/tmp/userpass.lst -u -t 2 -s $port $TARGET $service \
+        2>&1 \
         |strings -a \
         >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
 
@@ -2948,6 +2970,30 @@ function scanURLs()
             |egrep -v '^fimap |^Another fimap|^:: |^Starting harvester|^No links found|^AutoAwesome is done' \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.fimap
+    done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function mesosScan()
+{
+    local port=$1
+    local cmd
+    local output
+
+    for cmd in version env trace health status info flags features dump system/stats metrics/snapshot
+    do
+        output=$(timeout --kill-after=10 --foreground 1800 \
+            curl --retry 20 --retry-connrefused -k -s http://${TARGET}:${port}/$cmd 2>/dev/null \
+            |jq -M . 2>&1)
+        if [[ ${#output} -gt 0 ]] \
+        && [[ ! "$output" =~ .status.:.404, ]]
+        then
+            cmd=${cmd/\//-}
+            echo "$output" > "$RECONDIR"/${TARGET}.${port}.mesos.${cmd}
+        fi
     done
 
     return 0

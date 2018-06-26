@@ -1,6 +1,6 @@
 mkrecon is a bash shell script that launches several tools to pentest a single host.
 
-The latest version, and freshly patched, Kali is required.
+The latest, and freshly patched, version of Kali is required.
 
 Packages you will need to install (in Kali): alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy
 
@@ -21,11 +21,11 @@ Output files are placed in /root/mkrecon/"IP|hostname"
 
 WHAT MKRECON DOES
 - starts with an nmap scan(with version-detection scripts)
-- runs nmap discovery, safe, exploit, vuln, and auth category nse scripts
+- runs nmap discovery,safe,exploit,vuln,and auth nse scripts
 - tries a dictionary attack against snmp
 - OpenVAS scan (if you have it configured)
 - ncrack and brutespray on auth services found during nmap scan
-- hydra on ftp, telnet, ssh, mssql, mysql, smb, postgres, vnc for whatever port(s) they are on
+- hydra on ftp, telnet, ssh, mssql, mysql, smb, postgres, vnc on whatever port(s) they are on
 - dirb with multiple dictionaries on all web service ports
 - spider the discovered dirb urls
 - hydra on discovered web directories that require auth (code 401)
@@ -68,4 +68,3 @@ The mkbash file contains my customized bash environment plus a couple functions:
 mkprobe() - Probe the local system for weak configs, passwords, etc.
 
 dumpPackages() - Dump a package list from rpm/dpkg.  Copy back to attack host and run localsearchsploit, which uses searchsploit to find possible vulnerabilities
-

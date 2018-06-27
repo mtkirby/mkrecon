@@ -1,5 +1,5 @@
 #!/bin/bash
-# 20180625 Kirby
+# 20180626 Kirby
 
 umask 077
 
@@ -633,6 +633,14 @@ function MAIN()
         echo "... outputs $RECONDIR/${TARGET}.wig"
         wigScan &
 
+        echo "starting wapitiScan"
+        echo "... outputs $RECONDIR/${TARGET}.\$port.wapiti"
+        wapitiScan &
+
+        echo "starting wafw00fScan"
+        echo "... outputs $RECONDIR/${TARGET}.\$port.wafw00f"
+        wafw00fScan &
+
         # Enable when trying harder...
         #echo "starting webWords"
         #echo "... outputs $RECONDIR/${TARGET}.webwords"
@@ -764,7 +772,7 @@ function buildEnv()
     local pkg
     local icdir
     local testdir
-    local pkgs="alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
+    local pkgs="alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     for pkg in $pkgs
     do
@@ -866,14 +874,15 @@ function buildEnv()
         /usr/share/seclists/Passwords/Default-Credentials/postgres-betterdefaultpasslist.txt \
         /usr/share/seclists/Passwords/Default-Credentials/mssql-betterdefaultpasslist.txt \
         /usr/share/seclists/Passwords/Default-Credentials/windows-betterdefaultpasslist.txt \
-        /usr/share/routersploit/routersploit/resources/wordlists/defaults.txt \
+        /usr/lib/python3/dist-packages/routersploit/resources/wordlists/defaults.txt \
         |dos2unix -f \
         |sort -u \
         >> "$RECONDIR"/tmp/userpass.tmp
 
-    grep OptWordlist /usr/share/routersploit/routersploit/modules/creds/*/*/*.py 2>/dev/null \
+    grep OptWordlist /usr/lib/python3/dist-packages/routersploit/*/*/*/*/*.py 2>/dev/null \
         |cut -d'"' -f2 \
         |sed -e 's|,|\n|g' \
+        |egrep -v '^:|:$|^ '
         |sort -u \
         >> "$RECONDIR"/tmp/userpass.tmp
 
@@ -1225,7 +1234,7 @@ function snmpScan()
         /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \
         /usr/share/nmap/nselib/data/snmpcommunities.lst \
         /usr/share/seclists/Discovery/SNMP/snmp.txt \
-        /usr/share/routersploit/routersploit/resources/wordlists/snmp.txt \
+        /usr/lib/python3/dist-packages/routersploit/resources/wordlists/snmp.txt \
         /usr/share/wordlists/metasploit/snmp_default_pass.txt \
         |dos2unix -f |egrep -v '^#'|sort -u )
     do
@@ -3475,6 +3484,41 @@ function crackers()
     # brutespray uses service-specific wordlists in /usr/share/brutespray/wordlist
     timeout --kill-after=10 --foreground 172800 \
         brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c -o "$RECONDIR"/${TARGET}.brutespray.d >/dev/null 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function wafw00fScan()
+{
+    local url
+    local port
+
+    for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
+    do
+        port=${url##*:}
+        timeout --kill-after 10 --foreground 14400 \
+            wafw00f "$url" > "$RECONDIR"/${TARGET}.${port}.wafw00f 2>&1
+    done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function wapitiScan()
+{
+    local url
+    local port
+
+    for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
+    do
+        port=${url##*:}
+        timeout --kill-after 10 --foreground 14400 \
+            wapiti "$url" -o "$RECONDIR"/${TARGET}.${port}.wapiti -f html \
+            > "$RECONDIR"/tmp/wapiti.${port}.out 2>&1
+    done
 
     return 0
 }

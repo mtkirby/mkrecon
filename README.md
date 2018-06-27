@@ -2,7 +2,7 @@ mkrecon is a bash shell script that launches several tools to pentest a single h
 
 The latest, and freshly patched, version of Kali is required.
 
-Packages you will need to install (in Kali): alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy
+Packages you will need to install (in Kali): alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy
 
 If you want to use OpenVAS, change the password variable in the openvasScan function.
 
@@ -29,7 +29,7 @@ WHAT MKRECON DOES
 - dirb with multiple dictionaries on all web service ports
 - spider the discovered dirb urls
 - hydra on discovered web directories that require auth (code 401)
-- For any webservice discovered on any port: arachni, whatweb, Joomscan, WPScan, fimap, WAScan, nikto, wig, ZAP, sqlmap, skipfish, cewl, davtest, cadaver, exif, and metasploit http modules
+- For any webservice discovered on any port: arachni, whatweb, Joomscan, WPScan, fimap, WAScan, nikto, wafw00f, wapiti, wig, ZAP, sqlmap, skipfish, cewl, davtest, cadaver, exif, and metasploit http modules
 - eyewitness (screenshots) of the discovered web pages
 - routersploit on discovered telnet, ssh, ftp, web services
 - mech-dump of pages with parameters

@@ -669,7 +669,7 @@ function MAIN()
     if [[ -f "$RECONDIR"/${TARGET}.urls.401 ]]
     then
         echo "starting hydraScanURLs"
-        echo "... outputs $RECONDIR/${TARGET}.hydra if anything found"
+        echo "... outputs $RECONDIR/${TARGET}.hydra/ if anything found"
         hydraScanURLs &
     fi
     
@@ -689,13 +689,16 @@ function MAIN()
         echo "... outputs $RECONDIR/${TARGET}.whatweb"
         echo "... outputs $RECONDIR/${TARGET}.wpscan if anything found"
         echo "... outputs $RECONDIR/${TARGET}.joomscan if anything found"
-        echo "... outputs $RECONDIR/${TARGET}.fimap if anything found"
         # do not background.  Limit number of simultaneous scans
         scanURLs 
 
+        echo "starting fimapScan"
+        echo "... outputs $RECONDIR/${TARGET}.fimap if anything found"
+        fimapScan &
+
         echo "starting mechDumpURLs"
         echo "... outputs $RECONDIR/${TARGET}.mech-dump"
-        # do not background mech-dump.  There are dependencies in fuzzURLs.
+        # do not background mech-dump.  There are dependencies in wfuzzURLs.
         mechDumpURLs 
 
         echo "starting zapScan"
@@ -703,9 +706,9 @@ function MAIN()
         # do not background.  Limit number of simultaneous scans
         zapScan 
 
-        echo "starting fuzzURLs"
-        echo "... outputs $RECONDIR/${TARGET}.wfuzz"
-        fuzzURLs &
+        echo "starting wfuzzURLs"
+        echo "... outputs $RECONDIR/${TARGET}.wfuzz/"
+        wfuzzURLs &
     fi
 
     if [[ -f "$RECONDIR"/tmp/${TARGET}.spider.raw ]]
@@ -2514,7 +2517,7 @@ function cewlCrawl()
 ################################################################################
 
 ################################################################################
-function fuzzURLs()
+function wfuzzURLs()
 {
     local a_vars=()
     local file
@@ -2968,16 +2971,23 @@ function scanURLs()
             >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
     done
 
+    return 0
+}
+################################################################################
+
+################################################################################
+function fimapScan()
+{
+    local url
+
     # run fimap on anything with php
-    echo "Running fimap on $url"
-    echo "... outputs $RECONDIR/$TARGET.fimap"
     for url in $(egrep -i '\.php$' "$RECONDIR"/${TARGET}.urls |awk '{print $1}')
     do
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.fimap
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.fimap
-        timeout --kill-after=10 --foreground 1800 \
-            /usr/bin/time -v \
-            fimap --force-run -4 -u "$url" 2>&1 \
+        timeout --kill-after=10 --foreground 900 \
+            echo '' \
+            |fimap --force-run -4 -u "$url" 2>/dev/null \
             |egrep -v '^fimap |^Another fimap|^:: |^Starting harvester|^No links found|^AutoAwesome is done' \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.fimap
@@ -3423,12 +3433,7 @@ function WAScan()
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
             |uniq \
-            >> "$RECONDIR"/${TARGET}.${port}.WAScan &
-    done
-
-    while jobs 2>&1|grep -q 'wascan.py'
-    do
-        wait -n $(jobs 2>&1|grep wascan.py |cut -d'[' -f2|cut -d']' -f1|head -1)
+            >> "$RECONDIR"/${TARGET}.${port}.WAScan 
     done
 
     return 0

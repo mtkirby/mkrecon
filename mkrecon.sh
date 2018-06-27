@@ -62,7 +62,8 @@ function MAIN()
     openvasScan &
 
     echo "starting snmpScan"
-    echo "... outputs $RECONDIR/${TARGET}.snmp-check and deletes if none found"
+    echo "... outputs $RECONDIR/${TARGET}.nmap.snmp-brute"
+    echo "... outputs $RECONDIR/${TARGET}.snmp-check if anything found"
     snmpScan &
     
     echo "starting nmapScan"
@@ -1241,24 +1242,29 @@ function snmpScan()
     # nmap has false negatives on snmp detection.  We'll try communities with snmp-check.
     local community
 
-    for community in $(cat \
-        /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \
+    cat /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \
         /usr/share/nmap/nselib/data/snmpcommunities.lst \
         /usr/share/seclists/Discovery/SNMP/snmp.txt \
         /usr/lib/python3/dist-packages/routersploit/resources/wordlists/snmp.txt \
         /usr/share/wordlists/metasploit/snmp_default_pass.txt \
-        |dos2unix -f |egrep -v '^#'|sort -u )
-    do
-        echo "snmp-check -c '$community' $IP 2>&1 \
-            |egrep -v '^snmp-check |^Copyright |SNMP request timeout' \
-            >>\"$RECONDIR\"/tmp/${TARGET}.snmp-check 2>&1" \
-            >> "$RECONDIR"/tmp/${TARGET}.snmp-check.sh
-    done
-    echo "grep -q 'System information' \"$RECONDIR\"/tmp/${TARGET}.snmp-check \
-        && mv -f \"$RECONDIR\"/tmp/${TARGET}.snmp-check \"$RECONDIR\"/${TARGET}.snmp-check" \
-        >>"$RECONDIR"/tmp/${TARGET}.snmp-check.sh
-    chmod 700 "$RECONDIR"/tmp/${TARGET}.snmp-check.sh
-    screen -dmS ${TARGET}.snmp-check.$RANDOM timeout --kill-after=10 --foreground 172800 "$RECONDIR"/tmp/${TARGET}.snmp-check.sh
+        |dos2unix -f \
+        |egrep -v '^#' \
+        |sort -u \
+        >"$RECONDIR"/tmp/snmp.txt
+
+    nmap -Pn -T1 -p 161 -sU --script snmp-brute $TARGET --script-args snmp-brute.communitiesdb="$RECONDIR"/tmp/snmp.txt -oN "$RECONDIR"/${TARGET}.nmap.snmp-brute >/dev/null 2>&1
+    
+    if grep -q 'Valid credentials' "$RECONDIR"/${TARGET}.nmap.snmp-brute 2>/dev/null
+    then
+        for community in $(awk '/Valid credentials/ {print $2}' "$RECONDIR"/${TARGET}.nmap.snmp-brute |sort -u)
+        do
+            echo "$BORDER" >>"$RECONDIR"/${TARGET}.snmp-check
+            echo "COMMUNITY: $community" >>"$RECONDIR"/${TARGET}.snmp-check
+            snmp-check -c "$community" $IP 2>&1 \
+                |egrep -v '^snmp-check |^Copyright ' \
+                >>"$RECONDIR"/${TARGET}.snmp-check 2>&1
+        done
+    fi
 
     return 0
 }

@@ -603,6 +603,7 @@ function MAIN()
         echo "... outputs $RECONDIR/${TARGET}.spider.html"
         echo "... outputs $RECONDIR/${TARGET}.urls"
         echo "... outputs $RECONDIR/${TARGET}.urls.html"
+        # do not background.  There are dependencies below.
         webDiscover 
 
         echo "starting WAScan"
@@ -621,14 +622,6 @@ function MAIN()
         echo "... outputs $RECONDIR/${TARGET}.skipfish/"
         skipfishScan &
 
-        echo "starting niktoScan"
-        echo "... outputs $RECONDIR/${TARGET}:\$port.nikto"
-        niktoScan &
-
-        echo "starting arachniScan"
-        echo "... outputs $RECONDIR/${TARGET}/arachni.d"
-        arachniScan &
-
         echo "starting wigScan"
         echo "... outputs $RECONDIR/${TARGET}.wig"
         wigScan &
@@ -640,6 +633,16 @@ function MAIN()
         echo "starting wafw00fScan"
         echo "... outputs $RECONDIR/${TARGET}.\$port.wafw00f"
         wafw00fScan &
+
+        echo "starting niktoScan"
+        echo "... outputs $RECONDIR/${TARGET}:\$port.nikto"
+        # do not background.  Limit number of simultaneous scans
+        niktoScan 
+
+        echo "starting arachniScan"
+        echo "... outputs $RECONDIR/${TARGET}/arachni.d"
+        # do not background.  Limit number of simultaneous scans
+        arachniScan 
 
         # Enable when trying harder...
         #echo "starting webWords"
@@ -669,20 +672,9 @@ function MAIN()
     
     if [[ -f "$RECONDIR"/${TARGET}.urls ]]
     then
-        echo "starting zapScan"
-        echo "... outputs $RECONDIR/${TARGET}.zap.html"
-        zapScan &
-
         echo "starting getHeaders"
         echo "... outputs $RECONDIR/${TARGET}.headers"
         getHeaders &
-
-        echo "starting scanURLs"
-        echo "... outputs $RECONDIR/${TARGET}.whatweb"
-        echo "... outputs $RECONDIR/${TARGET}.wpscan if anything found"
-        echo "... outputs $RECONDIR/${TARGET}.joomscan if anything found"
-        echo "... outputs $RECONDIR/${TARGET}.fimap if anything found"
-        scanURLs &
 
         echo "starting davScanURLs"
         echo "... outputs $RECONDIR/${TARGET}.davtest if anything found"
@@ -690,10 +682,23 @@ function MAIN()
         echo "... outputs $RECONDIR/${TARGET}.nmap-webdav if anything found"
         davScanURLs &
 
+        echo "starting scanURLs"
+        echo "... outputs $RECONDIR/${TARGET}.whatweb"
+        echo "... outputs $RECONDIR/${TARGET}.wpscan if anything found"
+        echo "... outputs $RECONDIR/${TARGET}.joomscan if anything found"
+        echo "... outputs $RECONDIR/${TARGET}.fimap if anything found"
+        # do not background.  Limit number of simultaneous scans
+        scanURLs 
+
         echo "starting mechDumpURLs"
         echo "... outputs $RECONDIR/${TARGET}.mech-dump"
         # do not background mech-dump.  There are dependencies in fuzzURLs.
         mechDumpURLs 
+
+        echo "starting zapScan"
+        echo "... outputs $RECONDIR/${TARGET}.zap.html"
+        # do not background.  Limit number of simultaneous scans
+        zapScan 
 
         echo "starting fuzzURLs"
         echo "... outputs $RECONDIR/${TARGET}.wfuzz"
@@ -882,7 +887,7 @@ function buildEnv()
     grep OptWordlist /usr/lib/python3/dist-packages/routersploit/*/*/*/*/*.py 2>/dev/null \
         |cut -d'"' -f2 \
         |sed -e 's|,|\n|g' \
-        |egrep -v '^:|:$|^ '
+        |egrep -v '^:|:$|^ ' \
         |sort -u \
         >> "$RECONDIR"/tmp/userpass.tmp
 

@@ -624,18 +624,21 @@ function MAIN()
 
         echo "starting wigScan"
         echo "... outputs $RECONDIR/${TARGET}.wig"
-        wigScan &
+        # do not background.  Limit number of simultaneous scans
+        wigScan 
 
         echo "starting wapitiScan"
         echo "... outputs $RECONDIR/${TARGET}.\$port.wapiti"
-        wapitiScan &
+        # do not background.  Limit number of simultaneous scans
+        wapitiScan 
 
         echo "starting wafw00fScan"
-        echo "... outputs $RECONDIR/${TARGET}.\$port.wafw00f"
-        wafw00fScan &
+        echo "... outputs $RECONDIR/${TARGET}.wafw00f"
+        # do not background.  Limit number of simultaneous scans
+        wafw00fScan 
 
         echo "starting niktoScan"
-        echo "... outputs $RECONDIR/${TARGET}:\$port.nikto"
+        echo "... outputs $RECONDIR/${TARGET}.nikto"
         # do not background.  Limit number of simultaneous scans
         niktoScan 
 
@@ -1420,7 +1423,8 @@ function routersploitScan()
             (
             cd "$RECONDIR"/tmp/routersploitscript.$service.d
             cat "$RECONDIR"/tmp/routersploitscript.$service \
-                |timeout --kill-after 10 --foreground 172800 routersploit 2>&1 \
+                |timeout --kill-after 10 --foreground 172800 \
+                routersploit 2>&1 \
                 |sed -r "s/\x1B\[(([0-9]{1,2})?(;)?([0-9]{1,2})?)?[m,K,H,f,J]//g" \
                 |strings -a \
                 > "$RECONDIR"/${TARGET}.routersploit.$service 2>&1
@@ -1428,11 +1432,10 @@ function routersploitScan()
         fi
     done
 
-    wait
-    wait
-    wait
-    wait
-    wait
+    while jobs 2>&1|grep -q 'routersploit'
+    do
+        wait -n $(jobs 2>&1|grep routersploit |cut -d'[' -f2|cut -d']' -f1|head -1)
+    done
 
     return 0
 }
@@ -2316,14 +2319,13 @@ function zapScan()
 function niktoScan()
 {
     local url
-    local urlfile
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
-        # Run nikto in the background
-        urlfile=${url//\//,}
-        screen -dmS ${TARGET}.nikto.$RANDOM -L -Logfile "$RECONDIR"/${urlfile}.nikto \
-            timeout --kill-after=10 --foreground 3600 nikto -no404 -host "$url"
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.nikto
+        echo "$url" >> "$RECONDIR"/${TARGET}.nikto
+        timeout --kill-after=10 --foreground 3600 \
+            nikto -no404 -host "$url" >>"$RECONDIR"/${TARGET}.nikto 2>&1
     done
 
     return 0
@@ -2373,8 +2375,6 @@ function hydraScanURLs()
     local url
     local port
     local commonurl
-    local i=0
-    local jobs=0
 
     # Try to find commonality and just attack the top of the list
     # This will avoid attacking the same type of service on multiple urls
@@ -2418,12 +2418,11 @@ function hydraScanURLs()
                     "$RECONDIR"/${TARGET}.${hydrafile} 2>/dev/null
             fi
         ) &
-        let jobs++
     done
 
-    for (( i=0; i <= jobs; i++ ))
+    while jobs 2>&1|grep 'hydra' |grep -q 'http-get'
     do
-        wait
+        wait -n $(jobs 2>&1|grep hydra |grep http-get |cut -d'[' -f2|cut -d']' -f1|head -1)
     done
 
     return 0
@@ -2890,8 +2889,6 @@ function wigScan()
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null)
     do
-        echo "Running wig on $url"
-        echo "... outputs $RECONDIR/$TARGET.wig"
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
         echo "Testing $url" >> "$RECONDIR"/${TARGET}.wig 
         timeout --kill-after=10 --foreground 1800 \
@@ -3398,8 +3395,6 @@ function WAScan()
 {
     local url
     local scan
-    local jobs=0
-    local i
 
     if [[ ! -d /tmp/WAScan ]]
     then
@@ -3418,6 +3413,7 @@ function WAScan()
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
+        port=${url##*:}
         echo "$BORDER"  >> "$RECONDIR"/${TARGET}.${port}.WAScan
         echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.${port}.WAScan
         timeout --kill-after=10 --foreground 14400 \
@@ -3428,14 +3424,12 @@ function WAScan()
             |strings -a \
             |uniq \
             >> "$RECONDIR"/${TARGET}.${port}.WAScan &
-        let jobs++
     done
 
-    for (( i=1; i <= jobs; i++ ))
+    while jobs 2>&1|grep -q 'wascan.py'
     do
-        wait
+        wait -n $(jobs 2>&1|grep wascan.py |cut -d'[' -f2|cut -d']' -f1|head -1)
     done
-
 
     return 0
 }
@@ -3498,13 +3492,13 @@ function crackers()
 function wafw00fScan()
 {
     local url
-    local port
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
-        port=${url##*:}
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.wafw00f
+        echo "TESTING $url" >> "$RECONDIR"/${TARGET}.wafw00f
         timeout --kill-after 10 --foreground 14400 \
-            wafw00f "$url" > "$RECONDIR"/${TARGET}.${port}.wafw00f 2>&1
+            wafw00f "$url" >> "$RECONDIR"/${TARGET}.wafw00f 2>&1
     done
 
     return 0
@@ -3551,9 +3545,9 @@ function arachniScan()
             >"$RECONDIR"/tmp/arachni.$count.out 2>&1 &
     done
 
-    for (( i=1; i <= count; i++ ))
+    while jobs 2>&1|grep -q 'arachni'
     do
-        wait
+        wait -n $(jobs 2>&1|grep arachni |cut -d'[' -f2|cut -d']' -f1|head -1)
     done
 
     i=0

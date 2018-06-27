@@ -21,7 +21,7 @@ Output files are placed in /root/mkrecon/"IP|hostname"
 
 WHAT MKRECON DOES
 - starts with an nmap scan(with version-detection scripts)
-- runs nmap discovery,safe,exploit,vuln,and auth nse scripts
+- runs nmap discovery, safe, exploit, vuln, and auth nse scripts
 - tries a dictionary attack against snmp
 - OpenVAS scan (if you have it configured)
 - ncrack and brutespray on auth services found during nmap scan
@@ -44,8 +44,8 @@ WHAT MKRECON DOES
 - show smb shares and content
 - show elasticsearch indexes and content
 - show docker info
-- try simple postgres auth and pull users/passwords
-- try simple mysql auth and pull users/passwords
+- try simple postgres auth and pull users/password hashes
+- try simple mysql auth and pull users/password hashes
 - show iscsi info
 - retrieve ike keys and try to crack them
 - retrieve ipmi password hashes and try to crack them
@@ -58,7 +58,7 @@ WHAT MKRECON DOES
 - run Cisco metasploit modules if Cisco discovered
 - dictionary attack Oracle DB sids
 - try leaked ssh private keys
-- pull all RFC1918 PTR records if target is running DNS
+- pull all RFC1918 PTR records if target is running DNS.  Checks for zone records first for speed.
 
 
 ################################################################################

@@ -1,5 +1,9 @@
 #!/bin/bash
-# 20180626 Kirby
+# https://github.com/mtkirby/mkrecon
+# version 20180630
+
+
+# get subdomain and query for kerberos SRV, ns soa, txt, etc
 
 umask 077
 
@@ -3588,6 +3592,132 @@ function portcheck()
         if [[ $port == $pc ]]
         then
             return 1
+        fi
+    done
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function domainNameScan()
+{
+    local domain
+    local record
+
+    if [[ ${TARGET} =~ [a-zA-Z] ]]
+    then
+        domain=${TARGET#*.}
+    else
+        return 1
+    fi
+
+    rm -f "$RECONDIR"/${TARGET}.dnsinfo >/dev/null 2>&1
+
+    echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "host -a ${TARGET}" >>"$RECONDIR"/${TARGET}.dnsinfo
+    host -a ${TARGET} >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
+
+    echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "host -a $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
+    host -a $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
+
+    echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "host -t MX $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
+    host -t MX $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
+
+    echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "host -t TXT $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
+    host -t TXT $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
+
+    echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "host -t TXT _kerberos.$domain" >>"$RECONDIR"/${TARGET}.dnsinfo
+    host -t TXT _kerberos.$domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
+
+    for record in \
+        _aix._tcp \
+        _autodiscover._tcp \
+        _caldavs._tcp \
+        _caldav._tcp \
+        _carddavs._tcp \
+        _carddav._tcp \
+        _ceph-mon_.tcp \
+        _certificates._tcp \
+        _citrixreceiver._tcp \
+        _cmp._tcp \
+        _crls._tcp \
+        _crl._tcp \
+        _finger._tcp \
+        _ftp._tcp \
+        gc._msdcs \
+        _gc._tcp \
+        _h323be._tcp \
+        _h323be._udp \
+        _h323cs._tcp \
+        _h323cs._udp \
+        _h323ls._tcp \
+        _h323ls._udp \
+        _h323rs._udp \
+        _hkps._tcp \
+        _hkp._tcp \
+        _https._tcp \
+        _http._tcp \
+        _imap._tcp \
+        _imap.tcp \
+        _jabber-client._tcp \
+        _jabber-client._udp \
+        _jabber._tcp \
+        _jabber._udp \
+        _kerberos-master._tcp \
+        _kerberos-master._udp \
+        _kerberos._tcp \
+        _kerberos._tcp.dc._msdcs \
+        _kerberos.tcp.dc._msdcs \
+        _kerberos._udp \
+        _kpasswd._tcp \
+        _kpasswd._udp \
+        _ldap._tcp \
+        _ldap._tcp.dc._msdcs \
+        _ldap._tcp.ForestDNSZones \
+        _ldap._tcp.gc._msdcs \
+        _ldap._tcp.pdc._msdcs \
+        _matrix._tcp \
+        _minecraft._tcp \
+        _nntp._tcp \
+        _ocsp._tcp \
+        _pexapp._tcp \
+        _pgpkeys._tcp \
+        _pgprevokations._tcp \
+        _PKIXREP._tcp \
+        _sipfederationtls._tcp \
+        _sipinternal._tcp \
+        _sipinternaltls._tcp \
+        _sips._tcp \
+        _sip._tcp \
+        _sip._tls \
+        _sip._udp \
+        _smtp._tcp \
+        _stun._tcp \
+        _stun._udp \
+        _svcp._tcp \
+        _telnet._tcp \
+        _test._tcp \
+        _turns._tcp \
+        _turn._tcp \
+        _turn._udp \
+        _whois._tcp \
+        _xmpp-client._tcp \
+        _xmpp-client._udp \
+        _xmpp-server._tcp \
+        _xmpp-server._udp \
+        _x-puppet._tcp \
+        _ntp._udp 
+    do
+        if ! host -t SRV $record.$domain 2>&1 |grep -q NXDOMAIN
+        then
+            echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo
+            echo "host -t SRV $record.$domain" >>"$RECONDIR"/${TARGET}.dnsinfo
+            host -t SRV $record.$domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
         fi
     done
 

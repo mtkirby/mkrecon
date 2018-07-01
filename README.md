@@ -26,6 +26,7 @@ WHAT MKRECON DOES
 - OpenVAS scan (if you have it configured)
 - ncrack and brutespray on auth services found during nmap scan
 - hydra on ftp, telnet, ssh, mssql, mysql, smb, postgres, vnc on whatever port(s) they are on
+- try leaked ssh private keys on all ports running ssh
 - dirb with multiple dictionaries on all web service ports
 - spider the discovered dirb urls
 - hydra on discovered web directories that require auth (code 401)
@@ -57,8 +58,8 @@ WHAT MKRECON DOES
 - run Juniper metasploit modules if Juniper discovered
 - run Cisco metasploit modules if Cisco discovered
 - dictionary attack Oracle DB sids
-- try leaked ssh private keys
 - pull all RFC1918 PTR records if target is running DNS.  Checks for zone records first for speed.
+- pull dns srv, mx, txt, etc records for domain
 
 
 ################################################################################

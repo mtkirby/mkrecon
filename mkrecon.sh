@@ -1,9 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180630
-
-
-# get subdomain and query for kerberos SRV, ns soa, txt, etc
+# version 20180701
 
 umask 077
 
@@ -70,6 +67,10 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.snmp-check if anything found"
     snmpScan &
     
+    echo "starting domainNameScan"
+    echo "... outputs $RECONDIR/${TARGET}.dnsinfo"
+    domainNameScan &
+
     echo "starting nmapScan"
     echo "... outputs $RECONDIR/${TARGET}.nmap"
     echo "... outputs $RECONDIR/${TARGET}.ngrep"
@@ -3612,25 +3613,23 @@ function domainNameScan()
         return 1
     fi
 
-    rm -f "$RECONDIR"/${TARGET}.dnsinfo >/dev/null 2>&1
-
-    echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo
     echo "host -a ${TARGET}" >>"$RECONDIR"/${TARGET}.dnsinfo
     host -a ${TARGET} >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
 
-    echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
     echo "host -a $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
     host -a $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
 
-    echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
     echo "host -t MX $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
     host -t MX $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
 
-    echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
     echo "host -t TXT $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
     host -t TXT $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
 
-    echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
     echo "host -t TXT _kerberos.$domain" >>"$RECONDIR"/${TARGET}.dnsinfo
     host -t TXT _kerberos.$domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
 
@@ -3715,7 +3714,7 @@ function domainNameScan()
     do
         if ! host -t SRV $record.$domain 2>&1 |grep -q NXDOMAIN
         then
-            echo "$BANNER" >>"$RECONDIR"/${TARGET}.dnsinfo
+            echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo
             echo "host -t SRV $record.$domain" >>"$RECONDIR"/${TARGET}.dnsinfo
             host -t SRV $record.$domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
         fi

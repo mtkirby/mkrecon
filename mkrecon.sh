@@ -200,8 +200,9 @@ function MAIN()
             if [[ $protocol == 'tcp' ]] \
             && echo "... testing $port for http with wget" \
             && timeout --kill-after=10 --foreground 90 \
-                wget --tries=3 --retry-connrefused -O /dev/null --no-check-certificate -S -D $TARGET \
-                --method=HEAD http://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
+                wget -U $USERAGENT --tries=3 --retry-connrefused -O /dev/null --no-check-certificate \
+                    -S -D $TARGET --method=HEAD http://${TARGET}:${port} 2>&1 \
+                    |egrep -qi 'HTTP/|X-|Content|Date' \
             && ! grep -q "http://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
             then
                 echo "http://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
@@ -213,8 +214,9 @@ function MAIN()
             if [[ $protocol == 'tcp' ]] \
             && echo "... testing $port for https with wget" \
             && timeout --kill-after=10 --foreground 90 \
-                wget --tries=3 --retry-connrefused -O /dev/null --no-check-certificate -S  -D $TARGET \
-                --method=HEAD https://${TARGET}:${port} 2>&1 |egrep -qi 'HTTP/|X-|Content|Date' \
+                wget -U $USERAGENT --tries=3 --retry-connrefused -O /dev/null --no-check-certificate \
+                    -S  -D $TARGET  --method=HEAD https://${TARGET}:${port} 2>&1 \
+                    |egrep -qi 'HTTP/|X-|Content|Date' \
             && ! grep -q "https://${TARGET}:${port}" "$RECONDIR"/${TARGET}.baseurls >/dev/null 2>&1
             then
                 echo "https://${TARGET}:${port}" >> "$RECONDIR"/${TARGET}.baseurls
@@ -389,7 +391,9 @@ function MAIN()
             # nmap sometimes shows mesos as "unknown", so probe for a page
             if [[ $protocol == 'tcp' ]] \
             && [[ $version =~ Mesos ]] \
-            || curl --retry 20 --retry-connrefused -k -s http://${TARGET}:${port}/showme404 2>&1 |grep -q timestamp
+            || curl -A $USERAGENT --retry 20 --retry-connrefused -k \
+                -s http://${TARGET}:${port}/showme404 2>&1 \
+                |grep -q timestamp
             then
                 echo "starting mesosScan for port $port"
                 echo "... outputs $RECONDIR/${TARGET}.${port}.mesos.version"
@@ -805,6 +809,7 @@ function buildEnv()
     TTY=${rawtty#*/*/}
     BORDER='################################################################################' 
     DATE=$(date +"%Y%m%d%H%M")
+    USERAGENT="'Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/5.0)'"
 
     if [[ "$LOGNAME" != "root" ]]
     then
@@ -1152,13 +1157,13 @@ function otherNmaps()
         && rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute ) &
 
     screen -dmS ${TARGET}.nmap-auth.$RANDOM timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=auth -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
+        nmap -T2 -Pn -p $scanports --script=auth --script-args http.useragent=$USERAGENT -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
 
     screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=exploit,vuln -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
+        nmap -T2 -Pn -p $scanports --script=exploit,vuln --script-args http.useragent=$USERAGENT -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
 
     screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=discovery,safe -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
+        nmap -T2 -Pn -p $scanports --script=discovery,safe --script-args http.useragent=$USERAGENT -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
     
     return 0
 }    
@@ -1282,6 +1287,7 @@ function nmapScan()
     # other udp ports: U:111,123,12444,1258,13,13200,1604,161,17185,17555,177,1900,20110,20510,2126,2302,23196,26000,27138,27244,27777,27950,28138,30710,3123,31337,3478,3671,37,3702,3784,389,44818,4569,47808,49160,49161,49162,500,5060,53,5351,5353,5683,623,636,64738,6481,67,69,8611,8612,8767,88,9100,9600 
     nmap -Pn --open -T3 -sT -sU -p T:1-65535,U:67,68,69,111,123,161,500,53,623,5353,1813,4500,177,5060,5269 \
         --script=version -sV --version-all -O \
+        --script-args http.useragent=$USERAGENT \
         -oN "$RECONDIR"/${TARGET}.nmap \
         -oG "$RECONDIR"/${TARGET}.ngrep \
         -oX "$RECONDIR"/${TARGET}.xml \
@@ -1301,7 +1307,7 @@ function basicEyeWitness()
     fi
     screen -dmS ${TARGET}.ew.$RANDOM timeout --kill-after=10 --foreground 172800 \
         eyewitness --threads 2 -d "$RECONDIR"/${TARGET}.basicEyeWitness \
-        --max-retries 10 --timeout 20 \
+        --user-agent $USERAGENT --max-retries 10 --timeout 20 \
         --no-dns --no-prompt --all-protocols -x "$RECONDIR"/${TARGET}.xml
     return 0
 }
@@ -1929,35 +1935,49 @@ function dockerScan()
     local id
 
     timeout --kill-after=10 --foreground 300 \
-        curl --retry 20 --retry-connrefused -k -s ${proto}://${TARGET}:$port/info 2>/dev/null|jq -M . \
-        >> "$RECONDIR"/${TARGET}.dockerinfo.${port} 2>&1
+        curl -A $USERAGENT --retry 20 --retry-connrefused -k -s ${proto}://${TARGET}:$port/info \
+            2>/dev/null \
+            |jq -M . \
+            >> "$RECONDIR"/${TARGET}.dockerinfo.${port} 2>&1
 
     timeout --kill-after=10 --foreground 300 \
-        curl --retry 20 --retry-connrefused -k -s ${proto}://${TARGET}:$port/networks 2>/dev/null|jq -M . \
-        >> "$RECONDIR"/${TARGET}.dockernetworks.${port} 2>&1
+        curl -A $USERAGENT --retry 20 --retry-connrefused -k -s ${proto}://${TARGET}:$port/networks \
+            2>/dev/null \
+            |jq -M . \
+            >> "$RECONDIR"/${TARGET}.dockernetworks.${port} 2>&1
 
     timeout --kill-after=10 --foreground 300 \
-        curl --retry 20 --retry-connrefused -k -s ${proto}://${TARGET}:$port/containers/json 2>/dev/null|jq -M . \
-        >> "$RECONDIR"/${TARGET}.dockercontainers.${port} 2>&1
+        curl -A $USERAGENT --retry 20 --retry-connrefused -k \
+            -s ${proto}://${TARGET}:$port/containers/json 2>/dev/null \
+            |jq -M . \
+            >> "$RECONDIR"/${TARGET}.dockercontainers.${port} 2>&1
 
     for id in $(grep '"Id": ' "$RECONDIR"/${TARGET}.dockercontainers.${port} |cut -d'"' -f4)
     do
         timeout --kill-after=10 --foreground 300 \
-            curl --retry 20 --retry-connrefused -k -s ${proto}://${TARGET}:${port}/containers/${id}/top 2>/dev/null|jq -M . \
-            >> "$RECONDIR"/dockertop.${port}.${id}
+            curl -A $USERAGENT --retry 20 --retry-connrefused -k \
+                -s ${proto}://${TARGET}:${port}/containers/${id}/top 2>/dev/null \
+                |jq -M . \
+                >> "$RECONDIR"/dockertop.${port}.${id}
         timeout --kill-after=10 --foreground 300 \
-            curl --retry 20 --retry-connrefused -k -s ${proto}://${TARGET}:${port}/containers/${id}/changes 2>/dev/null|jq -M . \
-            >> "$RECONDIR"/dockerchanges.${port}.${id}
+            curl -A $USERAGENT --retry 20 --retry-connrefused -k \
+                -s ${proto}://${TARGET}:${port}/containers/${id}/changes 2>/dev/null \
+                |jq -M . \
+                >> "$RECONDIR"/dockerchanges.${port}.${id}
         timeout --kill-after=10 --foreground 300 \
-            curl --retry 20 --retry-connrefused -k -s "${proto}://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
-            2>/dev/null|tar xf - -O \
-            >> "$RECONDIR"/dockershadow.${port}.${id} 2>/dev/null
+            curl -A $USERAGENT --retry 20 --retry-connrefused -k \
+                -s "${proto}://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
+                2>/dev/null \
+                |tar xf - -O \
+                >> "$RECONDIR"/dockershadow.${port}.${id} 2>/dev/null
 
     done
 
     timeout --kill-after=10 --foreground 300 \
-        curl --retry 20 --retry-connrefused -k -s ${proto}://${TARGET}:${port}/v2/_catalog 2>/dev/null|jq -M . \
-        >> "$RECONDIR"/${TARGET}.dockerepo.${port} 2>&1
+        curl -A $USERAGENT --retry 20 --retry-connrefused -k \
+            -s ${proto}://${TARGET}:${port}/v2/_catalog 2>/dev/null \
+            |jq -M . \
+            >> "$RECONDIR"/${TARGET}.dockerepo.${port} 2>&1
 
     return 0
 }
@@ -1985,12 +2005,15 @@ function elasticsearchScan()
     local indexes=()
 
     timeout --kill-after=10 --foreground 300 \
-        curl --retry 20 --retry-connrefused -k -s "${proto}://${TARGET}:${port}/_cat/indices?v" \
-        > "$RECONDIR"/${TARGET}.elasticsearch.${port} 2>&1
+        curl -A $USERAGENT --retry 20 --retry-connrefused -k \
+            -s "${proto}://${TARGET}:${port}/_cat/indices?v" \
+            > "$RECONDIR"/${TARGET}.elasticsearch.${port} 2>&1
 
     timeout --kill-after=10 --foreground 300 \
-        curl --retry 20 --retry-connrefused -k -s "${proto}://${TARGET}:${port}/_all/_settings" 2>&1 |jq . \
-        > "$RECONDIR"/${TARGET}.elasticsearch.${port}._all_settings 
+        curl -A $USERAGENT --retry 20 --retry-connrefused -k \
+            -s "${proto}://${TARGET}:${port}/_all/_settings" 2>&1 \
+            |jq . \
+            > "$RECONDIR"/${TARGET}.elasticsearch.${port}._all_settings 
 
     if [[ -f "$RECONDIR"/${TARGET}.elasticsearch.${port} ]]
     then
@@ -2015,8 +2038,11 @@ function elasticsearchScan()
         for index in ${indexes[@]}
         do
             timeout --kill-after=10 --foreground 300 \
-                curl --retry 20 --retry-connrefused -k -s "${proto}://${TARGET}:${port}/${index}/_stats" 2>/dev/null |jq . \
-                > "$RECONDIR"/${TARGET}.elasticsearch.indexes.${port}/$index 2>&1
+                curl -A $USERAGENT --retry 20 --retry-connrefused -k \
+                    -s "${proto}://${TARGET}:${port}/${index}/_stats" \
+                    2>/dev/null \
+                    |jq . \
+                    > "$RECONDIR"/${TARGET}.elasticsearch.indexes.${port}/$index 2>&1
         done
     fi
 
@@ -2130,12 +2156,16 @@ function webDiscover()
 
         echo "$BORDER" >>"$RECONDIR"/${TARGET}.robots.txt
         echo "${url}/robots.txt" >>"$RECONDIR"/${TARGET}.robots.txt
-        curl --retry 20 --retry-connrefused -s ${url}/robots.txt >>"$RECONDIR"/${TARGET}.robots.txt 2>&1
+        curl -A $USERAGENT --retry 20 --retry-connrefused -s ${url}/robots.txt \
+            >>"$RECONDIR"/${TARGET}.robots.txt 2>&1
         echo "" >>"$RECONDIR"/${TARGET}.robots.txt
         echo "$BORDER" >>"$RECONDIR"/${TARGET}.robots.txt
 
-        for robotdir in $(curl --retry 20 --retry-connrefused -s ${url}/robots.txt 2>&1 \
-            |egrep '^Disallow: ' |awk '{print $2}' |sed -e 's/\*//g' |tr -d '\r')
+        for robotdir in $(curl -A $USERAGENT --retry 20 --retry-connrefused -s ${url}/robots.txt 2>&1 \
+            |egrep '^Disallow: ' \
+            |awk '{print $2}' \
+            |sed -e 's/\*//g' \
+            |tr -d '\r')
         do
             if [[ ! $robotdir =~ ^/$ ]] \
             && [[ ! $robotdir =~ \? ]] \
@@ -2144,15 +2174,24 @@ function webDiscover()
                 a_robots[${#a_robots[@]}]="${url}${robotdir}"
             fi
             timeout --kill-after=10 --foreground 300 \
-                wget --tries=20 --retry-connrefused --no-check-certificate -r -l3 --spider --force-html -D $TARGET ${url}${robotdir} 2>&1 \
-                | grep '^--' |grep -v '(try:' | awk '{ print $3 }' \
-                >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
+                wget -U $USERAGENT \
+                    --tries=20 --retry-connrefused --no-check-certificate -r -l3 --spider --force-html \
+                    -D $TARGET ${url}${robotdir} 2>&1 \
+                    |grep '^--' \
+                    |grep -v '(try:' \
+                    |awk '{ print $3 }' \
+                    >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
         done
 
         timeout --kill-after=10 --foreground 300 \
-            wget --tries=20 --retry-connrefused --no-check-certificate -r -l3 --spider --force-html -D $TARGET "$url" 2>&1 \
-            | grep '^--' |grep -v '(try:' | awk '{ print $3 }' |grep "/$TARGET[:/]"  \
-            >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
+            wget -U $USERAGENT \
+                --tries=20 --retry-connrefused --no-check-certificate -r -l3 --spider \
+                --force-html -D $TARGET "$url" 2>&1 \
+                |grep '^--' \
+                |grep -v '(try:' \
+                |awk '{ print $3 }' \
+                |grep "/$TARGET[:/]" \
+                >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
     done
 
     # second run through baseurls.  dirb may take hours
@@ -2164,8 +2203,9 @@ function webDiscover()
         for dirbfile in ${a_dirbfiles[@]}
         do
             shortfile=${dirbfile##*/}
-            timeout --kill-after=10 --foreground 1800 dirb "$url" "$dirbfile" -r -f -S \
-                >> "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-${shortfile}.dirb 2>&1
+            timeout --kill-after=10 --foreground 1800 \
+                dirb "$url" "$dirbfile" -a $USERAGENT -r -f -S \
+                    >> "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-${shortfile}.dirb 2>&1
         done
     done
 
@@ -2176,35 +2216,48 @@ function webDiscover()
     done
 
     for url in $(grep CODE:200 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb \
-        |grep -v SIZE:0 |awk '{print $2}' |sort -u)
+        |grep -v SIZE:0 \
+        |awk '{print $2}' \
+        |sort -u)
     do
         echo "${url%\?*}" >> "$RECONDIR"/tmp/${TARGET}.dirburls.raw
     done
 
     for url in $(grep '==> DIRECTORY: ' "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb \
-        |awk '{print $3}' |sort -u)
+        |awk '{print $3}' \
+        |sort -u)
     do
         echo "${url%\?*}" >> "$RECONDIR"/tmp/${TARGET}.dirburls.raw
     done
 
     cat "$RECONDIR"/tmp/${TARGET}.dirburls.raw 2>/dev/null \
-        |sed -e 's/\/\/*$/\//g'|sed -e 's/\/\.\/*$/\//g' \
-        |sed -e 's/\/\%2e\/*$/\//g' |sort -u \
+        |sed -e 's/\/\/*$/\//g' \
+        |sed -e 's/\/\.\/*$/\//g' \
+        |sed -e 's/\/\%2e\/*$/\//g' \
+        |sort -u \
         > "$RECONDIR"/${TARGET}.dirburls
 
     for url in $(cat "$RECONDIR"/${TARGET}.dirburls 2>/dev/null )
     do
         timeout --kill-after=10 --foreground 300 \
-            wget --tries=20 --retry-connrefused --no-check-certificate -r -l2 --spider --force-html -D $TARGET "$url" 2>&1 \
-            | grep '^--' |grep -v '(try:' |egrep "$IP|$TARGET" | awk '{ print $3 }' \
+            wget -U $USERAGENT \
+            --tries=20 --retry-connrefused --no-check-certificate -r -l2 --spider --force-html \
+            -D $TARGET "$url" 2>&1 \
+            | grep '^--' \
+            |grep -v '(try:' \
+            |egrep "$IP|$TARGET" \
+            |awk '{ print $3 }' \
             >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
     done
 
     cat "$RECONDIR"/tmp/${TARGET}.spider.raw \
         "$RECONDIR"/tmp/${TARGET}.robotspider.raw \
         2>/dev/null \
-        |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' |sort -u \
+        |egrep -vi '\.(css|js|png|gif|jpg|gz|ico)$' \
+        |sort -u \
         |sed -e "s|$TARGET//|$TARGET/|g" \
+        |grep -v '/manual/' \
+        |grep -v '/icons/' \
         > "$RECONDIR"/${TARGET}.spider
 
     for url in $(cat "$RECONDIR"/${TARGET}.spider|sort -u)
@@ -2226,10 +2279,12 @@ function webDiscover()
         |sed -e 's|/\./||g' \
         |sed -e 's|/\.\./||g' \
         |sed -e 's|:,,|://|' \
-        |sort -u > /tmp/${TARGET}.urls.raw
+        |grep -v '/manual/' \
+        |grep -v '/icons/' \
+        |sort -u > "$RECONDIR"/tmp/${TARGET}.urls.raw
 
     # remove duplicates that have standard ports.  e.g. http://target:80/dir -> http://target/dir
-    for url in $(cat /tmp/${TARGET}.urls.raw 2>/dev/null )
+    for url in $(cat "$RECONDIR"/tmp/${TARGET}.urls.raw 2>/dev/null )
     do
         if echo $url|egrep ':80/|:80$' |egrep -q '^http://'
         then 
@@ -2240,11 +2295,11 @@ function webDiscover()
         else 
             newurl=$url
         fi
-        echo $newurl >> /tmp/${TARGET}.urls.stripped
+        echo $newurl >> "$RECONDIR"/tmp/${TARGET}.urls.stripped
     done
-    cat /tmp/${TARGET}.urls.stripped 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.urls 
-    rm -f /tmp/${TARGET}.urls.stripped >/dev/null 2>&1
-    rm -f /tmp/${TARGET}.urls.raw >/dev/null 2>&1
+    cat "$RECONDIR"/tmp/${TARGET}.urls.stripped 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.urls 
+    rm -f "$RECONDIR"/tmp/${TARGET}.urls.stripped >/dev/null 2>&1
+    rm -f "$RECONDIR"/tmp/${TARGET}.urls.raw >/dev/null 2>&1
 
     for url in $(cat "$RECONDIR"/${TARGET}.urls 2>/dev/null )
     do 
@@ -2263,9 +2318,9 @@ function webDiscover()
     do
         if ! egrep -q "^$url$" "$RECONDIR"/${TARGET}.urls.401 >/dev/null 2>&1 \
         && timeout --kill-after=10 --foreground 900 \
-            wget --tries=20 --retry-connrefused -q -O /dev/null --no-check-certificate -S \
-            -D $TARGET --method=HEAD "$url" 2>&1 \
-            |grep -q '401 Unauthorized' >/dev/null 2>&1
+            wget -U $USERAGENT --tries=20 --retry-connrefused -q -O /dev/null --no-check-certificate -S \
+                -D $TARGET --method=HEAD "$url" 2>&1 \
+                |grep -q '401 Unauthorized' >/dev/null 2>&1
         then
             echo "$url" >> "$RECONDIR"/${TARGET}.urls.401
         fi
@@ -2339,7 +2394,7 @@ function niktoScan()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.nikto
         echo "$url" >> "$RECONDIR"/${TARGET}.nikto
         timeout --kill-after=10 --foreground 3600 \
-            nikto -no404 -host "$url" >>"$RECONDIR"/${TARGET}.nikto 2>&1
+            nikto -no404 -nointeractive -useragent $USERAGENT -host "$url" >>"$RECONDIR"/${TARGET}.nikto 2>&1
     done
 
     return 0
@@ -2356,8 +2411,9 @@ function getHeaders()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.headers
         echo "$url" >> "$RECONDIR"/${TARGET}.headers
         timeout --kill-after=10 --foreground 900 \
-            wget --tries=20 --retry-connrefused -q -O /dev/null --no-check-certificate -S  -D $TARGET --method=OPTIONS "$url" \
-            >> "$RECONDIR"/${TARGET}.headers 2>&1
+            wget -U $USERAGENT --tries=20 --retry-connrefused -q -O /dev/null --no-check-certificate -S \
+                -D $TARGET --method=OPTIONS "$url" \
+                >> "$RECONDIR"/${TARGET}.headers 2>&1
     done
 
     return 0
@@ -2454,7 +2510,7 @@ function sqlmapScan()
         echo "# TESTING $url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw
         timeout --kill-after=10 --foreground 1800 \
             /usr/bin/time -v \
-            sqlmap --forms --random-agent --batch --flush-session -o --threads=5 -a --technique=BEUSQ -u "$url" 2>&1 \
+            sqlmap --forms --random-agent --batch --flush-session -o --threads=2 -a --technique=BEUSQ -u "$url" 2>&1 \
             |tail -n +7 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
@@ -2480,7 +2536,9 @@ function webWords()
     do
         # collect words from websites
         timeout --kill-after=10 --foreground 1800 \
-            wget --tries=20 --retry-connrefused -rq -D $TARGET -O "$RECONDIR"/tmp/wget.dump "$url" >/dev/null 2>&1
+            wget -U $USERAGENT \
+                --tries=20 --retry-connrefused -rq -D $TARGET -O "$RECONDIR"/tmp/wget.dump "$url" \
+                >/dev/null 2>&1
         if [[ -f "$RECONDIR"/tmp/wget.dump ]]
         then
             html2dic "$RECONDIR"/tmp/wget.dump 2>/dev/null \
@@ -2515,7 +2573,7 @@ function cewlCrawl()
         timeout --kill-after=10 --foreground 90 \
             cewl -d 1 -a --meta_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlmeta \
             -e --email_file "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewlemail \
-            -w "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewl \
+            -u $USERAGENT -w "$RECONDIR"/tmp/cewl/${TARGET}.${urlfile}.cewl \
             "$url" >/dev/null 2>&1 
     done
 
@@ -2780,7 +2838,8 @@ function mechDumpURLs()
         |egrep -v '/\?C=' \
         |tr -d '\0')
     do
-        output=$(timeout --kill-after=10 --foreground 90 mech-dump --absolute --forms "$url" 2>/dev/null)
+        output=$(timeout --kill-after=10 --foreground 90 \
+            mech-dump --agent $USERAGENT --absolute --forms "$url" 2>/dev/null)
         if [[ ${#output} -gt 0 ]]
         then
             echo "$BORDER" >> "$RECONDIR"/${TARGET}.mech-dump
@@ -2856,7 +2915,8 @@ function exifScanURLs()
     do   
         # download files to /tmp because my /tmp is tmpfs (less i/o)
         timeout --kill-after=10 --foreground 90 \
-            wget --tries=20 --retry-connrefused -q --no-check-certificate -D $TARGET -O /tmp/${TARGET}.exiftestfile "$url"
+            wget -U $USERAGENT --tries=20 --retry-connrefused -q --no-check-certificate \
+                -D $TARGET -O /tmp/${TARGET}.exiftestfile "$url"
         if exif /tmp/${TARGET}.exiftestfile >/dev/null 2>&1 
         then 
             echo "<hr>" >> $exifreport
@@ -2924,7 +2984,7 @@ function scanURLs()
     local url
 
     screen -dmS ${TARGET}.urlsew.$RANDOM timeout --kill-after=10 --foreground 172800 \
-        eyewitness --threads 2 -d "$RECONDIR"/${TARGET}.urlsEyeWitness \
+        eyewitness --user-agent $USERAGENT --threads 2 -d "$RECONDIR"/${TARGET}.urlsEyeWitness \
         --max-retries 10 --timeout 20 \
         --no-dns --no-prompt --headless -f "$RECONDIR"/${TARGET}.urls
 
@@ -2935,7 +2995,7 @@ function scanURLs()
         && ! egrep -q "^$url" "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
         then
             timeout --kill-after=10 --foreground 3600 \
-                whatweb -a3 -t2 --color=never "$url" \
+                whatweb -U $USERAGENT -a3 -t2 --color=never "$url" \
                 |strings -a \
                 >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
             echo '' >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
@@ -2951,7 +3011,7 @@ function scanURLs()
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
         timeout --kill-after=10 --foreground 1800 \
             /usr/bin/time -v \
-            wpscan -t3 --follow-redirection --disable-tls-checks -e \
+            wpscan -a $USERAGENT -r -t3 --follow-redirection --disable-tls-checks -e \
             --no-banner --no-color --batch --url "$url" \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
@@ -2961,7 +3021,7 @@ function scanURLs()
         echo "CRACKING ADMIN FOR URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
         timeout --kill-after=10 --foreground 1800 \
             /usr/bin/time -v \
-            wpscan -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
+            wpscan -a $USERAGENT -r -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
             --username admin --url "$url" \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.wpscan 2>&1
@@ -2976,7 +3036,7 @@ function scanURLs()
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.joomscan
         timeout --kill-after=10 --foreground 1800 \
             /usr/bin/time -v \
-            joomscan -ec -r -u "$url" \
+            joomscan -ec -r -a $USERAGENT -u "$url" \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
@@ -2998,7 +3058,7 @@ function fimapScan()
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.fimap
         timeout --kill-after=10 --foreground 900 \
             echo '' \
-            |fimap --force-run -4 -u "$url" 2>/dev/null \
+            |fimap --force-run -4 -A $USERAGENT -u "$url" 2>/dev/null \
             |egrep -v '^fimap |^Another fimap|^:: |^Starting harvester|^No links found|^AutoAwesome is done' \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.fimap
@@ -3018,8 +3078,9 @@ function mesosScan()
     for cmd in version env trace health status info flags features dump system/stats metrics/snapshot
     do
         output=$(timeout --kill-after=10 --foreground 1800 \
-            curl --retry 20 --retry-connrefused -k -s http://${TARGET}:${port}/$cmd 2>/dev/null \
-            |jq -M . 2>&1)
+            curl -A $USERAGENT \
+                --retry 20 --retry-connrefused -k -s http://${TARGET}:${port}/$cmd 2>/dev/null \
+                |jq -M . 2>&1)
         if [[ ${#output} -gt 0 ]] \
         && [[ ! "$output" =~ .status.:.404, ]]
         then
@@ -3059,6 +3120,7 @@ function memcacheScan()
     echo "set RHOST $TARGET" >> $cmdfile
     echo "set RPORT $TARGET" >> $cmdfile
     echo "set VERBOSE false" >> $cmdfile
+    echo "set UserAgent $USERAGENT" >> $cmdfile
     echo "run" >> $cmdfile
     echo "exit" >> $cmdfile
 
@@ -3128,6 +3190,7 @@ function msfRMIScan()
             echo "set RHOSTS $TARGET" >> "$cmdfile"
             echo "set RHOST $TARGET" >> $cmdfile
             echo "set VERBOSE false" >> $cmdfile
+            echo "set UserAgent $USERAGENT" >> $cmdfile
             echo "run" >> "$cmdfile"
             echo "echo ''" >> "$cmdfile"
         done
@@ -3189,6 +3252,7 @@ function msfHttpScan()
             echo "set SSL $ssl" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
             echo "set THREADS 2" >> $cmdfile
+            echo "set UserAgent $USERAGENT" >> $cmdfile
             echo "run" >> "$cmdfile"
             echo "echo ''" >> "$cmdfile"
         done
@@ -3236,6 +3300,7 @@ function msfHPScan()
             echo "set RHOST $TARGET" >> $cmdfile
             echo "set SSL true" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
+            echo "set UserAgent $USERAGENT" >> $cmdfile
             echo "run" >> "$cmdfile"
             echo "echo ''" >> "$cmdfile"
         done
@@ -3249,6 +3314,7 @@ function msfHPScan()
             echo "set RHOST $TARGET" >> $cmdfile
             echo "set SSL false" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
+            echo "set UserAgent $USERAGENT" >> $cmdfile
             echo "run" >> "$cmdfile"
             echo "echo ''" >> "$cmdfile"
         done
@@ -3296,6 +3362,7 @@ function msfSapScan()
             echo "set RHOST $TARGET" >> $cmdfile
             echo "set SSL true" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
+            echo "set UserAgent $USERAGENT" >> $cmdfile
             echo "run" >> "$cmdfile"
             echo "echo ''" >> "$cmdfile"
         done
@@ -3309,6 +3376,7 @@ function msfSapScan()
             echo "set RHOST $TARGET" >> $cmdfile
             echo "set SSL false" >> "$cmdfile"
             echo "set VERBOSE false" >> $cmdfile
+            echo "set UserAgent $USERAGENT" >> $cmdfile
             echo "run" >> "$cmdfile"
             echo "echo ''" >> "$cmdfile"
         done
@@ -3337,6 +3405,7 @@ function msfJuniperScan()
     echo "set RHOST $TARGET" >> "$cmdfile"
     echo "set RHOSTS $TARGET" >> "$cmdfile"
     echo "set VERBOSE false" >> $cmdfile
+    echo "set UserAgent $USERAGENT" >> $cmdfile
     echo "run" >> "$cmdfile"
     echo "exit" >> "$cmdfile"
 
@@ -3383,6 +3452,7 @@ function msfCiscoScan()
         echo "set RHOST $TARGET" >> "$cmdfile"
         echo "set RHOSTS $TARGET" >> "$cmdfile"
         echo "set VERBOSE false" >> $cmdfile
+        echo "set UserAgent $USERAGENT" >> $cmdfile
         echo "run" >> "$cmdfile"
         echo "echo ''" >> "$cmdfile"
     done
@@ -3439,7 +3509,7 @@ function WAScan()
         echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.${port}.WAScan
         timeout --kill-after=10 --foreground 14400 \
             /usr/bin/time -v \
-            /tmp/WAScan/wascan.py -n -r --url "$url" 2>&1 \
+            /tmp/WAScan/wascan.py -A $USERAGENT -n -r --url "$url" 2>&1 \
             |tail -n +11 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
@@ -3555,9 +3625,9 @@ function arachniScan()
     do
         let count++
         timeout --kill-after 10 --foreground 172800 \
-            arachni --audit-links --audit-forms --audit-ui-forms --audit-ui-inputs --audit-xmls \
-            --audit-jsons --timeout=47:30:0 --output-only-positives --http-request-concurrency=1 \
-            --report-save-path="$RECONDIR"/tmp/arachni.d $url \
+            arachni --http-user-agent $USERAGENT --audit-links --audit-forms --audit-ui-forms \
+            --audit-ui-inputs --audit-xmls --audit-jsons --timeout=47:30:0 --output-only-positives \
+            --http-request-concurrency=1 --report-save-path="$RECONDIR"/tmp/arachni.d $url \
             >"$RECONDIR"/tmp/arachni.$count.out 2>&1 &
     done
 
@@ -3608,7 +3678,16 @@ function domainNameScan()
 
     if [[ ${TARGET} =~ [a-zA-Z] ]]
     then
-        domain=${TARGET#*.}
+        if [[ $(echo $TARGET |grep -o '.' |grep -c '\.') -eq 1 ]]
+        then
+            domain=$TARGET
+        elif [[ $(echo $TARGET |grep -o '.' |grep -c '\.') -ge 2 ]]
+        then
+            domain=${TARGET#*.}
+        elif [[ $(echo $TARGET |grep -o '.' |grep -c '\.') -eq 0 ]]
+        then
+            return 1
+        fi
     else
         return 1
     fi

@@ -649,8 +649,8 @@ function MAIN()
 
         echo "starting niktoScan"
         echo "... outputs $RECONDIR/${TARGET}.nikto"
-        # do not background.  Limit number of simultaneous scans
-        niktoScan 
+        # background because nikto tends to pause
+        niktoScan &
 
         echo "starting arachniScan"
         echo "... outputs $RECONDIR/${TARGET}/arachni.d"
@@ -842,6 +842,14 @@ function buildEnv()
     then
         echo "FAILURE: you should be running this script on kali"
         return 1
+    fi
+
+    # Remove hydra signature in a new copy of hydra.  Avoid IDS/IPS.
+    if [[ ! -f "/usr/bin/hydra.mkrecon" ]]
+    then
+        cp -f /usr/bin/hydra /usr/bin/hydra.mkrecon >/dev/null 2>&1
+        perl -pi -e 's|Mozilla/4.0 \(Hydra\)|Mozilla/5.0 (hello)|g' /usr/bin/hydra.mkrecon >/dev/null 2>&1
+        chmod 755 /usr/bin/hydra.mkrecon
     fi
 
     mkdir -p "$RECONDIR"/tmp >/dev/null 2>&1
@@ -1813,7 +1821,7 @@ function oracleScan()
     for file in /usr/share/nmap/nselib/data/oracle-sids /usr/share/wordlists/metasploit/sid.txt
     do
         timeout --kill-after=10 --foreground 86400 \
-            hydra -I -P $file -u -t 2 -s $port $TARGET oracle-sid \
+            hydra.mkrecon -I -P $file -u -t 2 -s $port $TARGET oracle-sid \
             >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
     done
 
@@ -1851,7 +1859,7 @@ function passHydra()
         then
             timeout --kill-after=10 --foreground 86400 \
                 /usr/bin/time -v \
-                hydra -I -P $file -u -t 1 -s $port $TARGET $service \
+                hydra.mkrecon -I -P $file -u -t 1 -s $port $TARGET $service \
                 |strings -a \
                 >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
         else
@@ -1876,7 +1884,7 @@ function doHydra()
 
     timeout --kill-after=10 --foreground 172800 \
         /usr/bin/time -v \
-        hydra -I -C "$RECONDIR"/tmp/userpass.lst -u -t 2 -s $port $TARGET $service \
+        hydra.mkrecon -I -C "$RECONDIR"/tmp/userpass.lst -u -t 2 -s $port $TARGET $service \
         2>&1 \
         |strings -a \
         >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
@@ -2393,7 +2401,8 @@ function niktoScan()
     do
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.nikto
         echo "$url" >> "$RECONDIR"/${TARGET}.nikto
-        timeout --kill-after=10 --foreground 3600 \
+        # sometimes nikto will prompt for a submission of weird data.  Echo 'n' into pipe.
+        echo 'n' |timeout --kill-after=10 --foreground 3600 \
             nikto -no404 -nointeractive -useragent "$USERAGENT" -host "$url" >>"$RECONDIR"/${TARGET}.nikto 2>&1
     done
 
@@ -2469,7 +2478,7 @@ function hydraScanURLs()
             echo "TESTING $url with userpass.lst"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
             timeout --kill-after=10 --foreground 86400 \
                 /usr/bin/time -v \
-                hydra -I -C "$RECONDIR"/tmp/userpass.lst \
+                hydra.mkrecon -I -C "$RECONDIR"/tmp/userpass.lst \
                 -u -t 2 $sslflag -s $port $TARGET http-get "$path" \
                 >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
     
@@ -2478,7 +2487,7 @@ function hydraScanURLs()
             echo "TESTING $url with users.lst and passwds.lst"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
             timeout --kill-after=10 --foreground 86400 \
                 /usr/bin/time -v \
-                hydra -I -L "$RECONDIR"/tmp/users.lst -P "$RECONDIR"/tmp/passwds.lst \
+                hydra.mkrecon -I -L "$RECONDIR"/tmp/users.lst -P "$RECONDIR"/tmp/passwds.lst \
                 -e nsr -u -t 5 $sslflag -s $port $TARGET http-get "$path" \
                 >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
     

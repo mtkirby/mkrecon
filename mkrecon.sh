@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180702
+# version 20180704
 
 umask 077
 
@@ -249,7 +249,7 @@ function MAIN()
             then
                 FTPPORTS[${#FTPPORTS[@]}]=$port
                 echo "starting doHydra $port ftp"
-                echo "... outputs $RECONDIR/${TARGET}.ftp.$port.hydra"
+                echo "... outputs $RECONDIR/${TARGET}.$port.ftp.hydra"
                 doHydra $port ftp &
             fi
         
@@ -259,7 +259,7 @@ function MAIN()
             then
                 TELNETPORTS[${#TELNETPORTS[@]}]=$port
                 echo "starting doHydra $port telnet"
-                echo "... outputs $RECONDIR/${TARGET}.telnet.$port.hydra"
+                echo "... outputs $RECONDIR/${TARGET}.$port.telnet.hydra"
                 doHydra $port telnet &
             fi
         
@@ -269,7 +269,7 @@ function MAIN()
             then
                 SSHPORTS[${#SSHPORTS[@]}]=$port
                 echo "starting doHydra $port ssh"
-                echo "... outputs $RECONDIR/${TARGET}.ssh.$port.hydra"
+                echo "... outputs $RECONDIR/${TARGET}.$port.ssh.hydra"
                 doHydra $port ssh &
                 sshflag=1
             fi
@@ -279,7 +279,7 @@ function MAIN()
             && [[ $service == 'ms-sql' ]]
             then
                 echo "starting doHydra $port mssql"
-                echo "... outputs $RECONDIR/${TARGET}.mssql.$port.hydra"
+                echo "... outputs $RECONDIR/${TARGET}.$port.mssql.hydra"
                 doHydra $port mssql &
             fi
         
@@ -288,11 +288,11 @@ function MAIN()
             && [[ $service == 'mysql' ]]
             then
                 echo "starting doHydra $port mysql"
-                echo "... outputs $RECONDIR/${TARGET}.mysql.$port.hydra"
+                echo "... outputs $RECONDIR/${TARGET}.$port.mysql.hydra"
                 doHydra $port mysql &
 
                 echo "starting mysqlScan for port $port"
-                echo "... outputs $RECONDIR/${TARGET}.mysql.$port"
+                echo "... outputs $RECONDIR/${TARGET}.$port.mysql"
                 mysqlScan $port &
             fi
         
@@ -300,12 +300,9 @@ function MAIN()
             if [[ $protocol == 'tcp' ]] \
             && [[ $service == 'oracle-tns' ]]
             then
-                echo "starting tnscmd10g on oracle $port"
-                echo "... outputs $RECONDIR/${TARGET}.oracle.tnscmd10g.\$port"
-                tnscmd10gScan $port &
-
                 echo "starting oracleScan $port"
-                echo "... outputs $RECONDIR/${TARGET}.oracle.$port.hydra"
+                echo "... outputs $RECONDIR/${TARGET}.$port.oracle.tnscmd10g"
+                echo "... outputs $RECONDIR/${TARGET}.$port.oracle.hydra"
                 #echo "... outputs $RECONDIR/${TARGET}.nmap-oracle-brute.\$sid"
                 oracleScan $port &
             fi
@@ -315,7 +312,7 @@ function MAIN()
             && [[ $service == 'vnc' ]]
             then
                 echo "starting passHydra $port vnc"
-                echo "... outputs $RECONDIR/${TARGET}.vnc.$port.hydra"
+                echo "... outputs $RECONDIR/${TARGET}.$port.vnc.hydra"
                 passHydra $port vnc /usr/share/seclists/Passwords/Default-Credentials/vnc-betterdefaultpasslist.txt &
             fi
     
@@ -371,7 +368,7 @@ function MAIN()
             && [[ $service =~ memcached ]] 
             then
                 echo "starting memcacheScan for port $port"
-                echo "... outputs $RECONDIR/${TARGET}.msf.memcached.${port}.out"
+                echo "... outputs $RECONDIR/${TARGET}.$port.memcached.msf"
                 memcacheScan $port &
             fi
         
@@ -461,7 +458,7 @@ function MAIN()
                 smbScan &
 
                 echo "starting doHydra $port smb"
-                echo "... outputs $RECONDIR/${TARGET}.smb.$port.hydra"
+                echo "... outputs $RECONDIR/${TARGET}.$port.smb.hydra"
                 doHydra $port smb &
             fi
         
@@ -470,7 +467,7 @@ function MAIN()
             && [[ $service == 'redis' ]] 
             then
                 echo "starting redisScan for port $port"
-                echo "... outputs $RECONDIR/${TARGET}.redis.${port}"
+                echo "... outputs $RECONDIR/${TARGET}.$port.redis"
                 redisScan $port &
             fi
         
@@ -479,8 +476,8 @@ function MAIN()
             && [[ $service == 'ldap' ]] 
             then
                 echo "starting ldapScan for port $port"
-                echo "... outputs $RECONDIR/${TARGET}.ldap.${port}"
-                echo "... outputs $RECONDIR/${TARGET}.ldap.${port}.\$context"
+                echo "... outputs $RECONDIR/${TARGET}.$port.ldap"
+                echo "... outputs $RECONDIR/${TARGET}.$port.ldap.\$context"
                 ldapScan $port &
             fi
     
@@ -489,8 +486,8 @@ function MAIN()
             && [[ $version == 'Elasticsearch' ]] 
             then
                 echo "starting elasticsearchScan for port $port"
-                echo "... outputs $RECONDIR/${TARGET}.elasticsearch.indexes.${port}"
-                echo "... outputs $RECONDIR/${TARGET}.elasticsearch.indexes.${port}.\$index"
+                echo "... outputs $RECONDIR/${TARGET}.$port.elasticsearch.indexes"
+                echo "... outputs $RECONDIR/${TARGET}.$port.elasticsearch.indexes.\$index"
                 elasticsearchScan $port $proto &
             fi
         
@@ -499,7 +496,7 @@ function MAIN()
             && [[ $service == 'iscsi' ]] 
             then
                 echo "starting iscsiScan for port $port"
-                echo "... outputs $RECONDIR/${TARGET}.iscsiadm.${port}"
+                echo "... outputs $RECONDIR/${TARGET}.$port.iscsiadm"
                 iscsiScan $port &
             fi
 
@@ -522,13 +519,13 @@ function MAIN()
             && [[ $version =~ Docker ]]
             then
                 echo "starting dockerScan for port $port"
-                echo "... outputs $RECONDIR/${TARGET}.dockerinfo.${port}"
-                echo "... outputs $RECONDIR/${TARGET}.dockernetworks.${port}"
-                echo "... outputs $RECONDIR/${TARGET}.dockercontainers.${port}"
-                echo "... outputs $RECONDIR/dockertop.${port}.${id}"
-                echo "... outputs $RECONDIR/dockerchanges.${port}.${id}"
-                echo "... outputs $RECONDIR/dockershadow.${port}.${id}"
-                echo "... outputs $RECONDIR/${TARGET}.dockerepo.${port}"
+                echo "... outputs $RECONDIR/${TARGET}.$port.dockerinfo"
+                echo "... outputs $RECONDIR/${TARGET}.$port.dockernetworks"
+                echo "... outputs $RECONDIR/${TARGET}.$port.dockercontainers"
+                echo "... outputs $RECONDIR/${TARGET}.$port.dockertop.${id}"
+                echo "... outputs $RECONDIR/${TARGET}.$port.dockerchanges.${id}"
+                echo "... outputs $RECONDIR/${TARGET}.$port.dockershadow.${id}"
+                echo "... outputs $RECONDIR/${TARGET}.$port.dockerepo"
                 dockerScan $port $proto 
             fi
 
@@ -537,11 +534,11 @@ function MAIN()
             && [[ $service =~ postgresql ]]
             then
                 echo "starting postgresqlScan for port $port"
-                echo "... outputs $RECONDIR/${TARGET}.postgresql.$port"
+                echo "... outputs $RECONDIR/${TARGET}.$port.postgresql"
                 postgresqlScan $port &
     
                 echo "starting postgresqlHydra for port $port"
-                echo "... outputs $RECONDIR/${TARGET}.postgresql.$port.hydra"
+                echo "... outputs $RECONDIR/${TARGET}.$port.postgres.hydra"
                 doHydra $port postgres &
             fi
     
@@ -1780,32 +1777,32 @@ function mysqlScan()
     local port=$1
     local db
 
-    echo "show databases" >> "$RECONDIR"/${TARGET}.mysql.$port
+    echo "show databases" >> "$RECONDIR"/${TARGET}.$port.mysql
     timeout --kill-after=10 --foreground 300 \
         mysql -E -u root -e 'show databases;' --connect-timeout=90 -h $TARGET \
-        >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.mysql 2>&1
 
 
-    for db in $(cat "$RECONDIR"/${TARGET}.mysql.$port |awk '/^Database:/ {print $2}')
+    for db in $(cat "$RECONDIR"/${TARGET}.$port.mysql |awk '/^Database:/ {print $2}')
     do
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port
-        echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mysql
+        echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.$port.mysql 2>&1
         timeout --kill-after=10 --foreground 300 \
             mysql -E -u root -D "$db" -e 'show tables;' --connect-timeout=90 -h $TARGET \
-            |grep -v 'row *' >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+            |grep -v 'row *' >> "$RECONDIR"/${TARGET}.$port.mysql 2>&1
     done
 
-    echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port
-    echo "show full processlist;" >> "$RECONDIR"/${TARGET}.mysql.$port 
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mysql
+    echo "show full processlist;" >> "$RECONDIR"/${TARGET}.$port.mysql
     timeout --kill-after=10 --foreground 300 \
         mysql -E -u root -e 'show full processlist;' --connect-timeout=90 -h $TARGET \
-        >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.mysql 2>&1
 
-    echo "$BORDER" >> "$RECONDIR"/${TARGET}.mysql.$port
-    echo "select host,user,password from mysql.user;" >> "$RECONDIR"/${TARGET}.mysql.$port
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mysql
+    echo "select host,user,password from mysql.user;" >> "$RECONDIR"/${TARGET}.$port.mysql
     timeout --kill-after=10 --foreground 300 \
         mysql -E -u root -e 'select host,user,password from mysql.user;' --connect-timeout=90 -h $TARGET \
-        >> "$RECONDIR"/${TARGET}.mysql.$port 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.mysql 2>&1
 
     return 0
 }
@@ -1817,19 +1814,24 @@ function oracleScan()
     local port=$1
     local sid
     local file
+    local alias
 
-    for file in /usr/share/nmap/nselib/data/oracle-sids /usr/share/wordlists/metasploit/sid.txt
+    timeout --kill-after=10 --foreground 90 \
+        tnscmd10g -h ${TARGET} -p $port >"$RECONDIR"/${TARGET}.$port.oracle.tnscmd10g 2>&1
+
+    for file in /usr/share/nmap/nselib/data/oracle-sids \
+        /usr/share/wordlists/metasploit/sid.txt 
     do
         timeout --kill-after=10 --foreground 86400 \
             hydra.mkrecon -I -P $file -u -t 2 -s $port $TARGET oracle-sid \
-            >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
+            >> "$RECONDIR"/${TARGET}.$port.oracle.hydra 2>&1
     done
 
     # DISABLED BY DEFAULT.
     # This will likely lockout accounts
     #
     # [1580][oracle-sid] host: blah.dca.somewhere.net   login: blahdb
-    #for sid in $(cat "$RECONDIR"/${TARGET}.$service.$port.hydra \
+    #for sid in $(cat "$RECONDIR"/${TARGET}.$port.$service.hydra \
     #    |awk '/oracle-sid.*login: / {print $5}')
     #do
     #    timeout --kill-after=10 --foreground 14400 \
@@ -1861,15 +1863,15 @@ function passHydra()
                 /usr/bin/time -v \
                 hydra.mkrecon -I -P $file -u -t 1 -s $port $TARGET $service \
                 |strings -a \
-                >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
+                >> "$RECONDIR"/${TARGET}.$port.$service.hydra 2>&1
         else
             echo "ERROR in passHydra: file not found: $file"
         fi
     done
 
-#    if ! grep -q 'successfully completed' "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+#    if ! grep -q 'successfully completed' "$RECONDIR"/${TARGET}.$port.$service.hydra 2>/dev/null
 #    then 
-#        rm -f "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+#        rm -f "$RECONDIR"/${TARGET}.$port.$service.hydra 2>/dev/null
 #    fi       
 
     return 0
@@ -1887,11 +1889,11 @@ function doHydra()
         hydra.mkrecon -I -C "$RECONDIR"/tmp/userpass.lst -u -t 2 -s $port $TARGET $service \
         2>&1 \
         |strings -a \
-        >> "$RECONDIR"/${TARGET}.$service.$port.hydra 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.$service.hydra 2>&1
 
-#    if ! grep -q 'successfully completed' "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+#    if ! grep -q 'successfully completed' "$RECONDIR"/${TARGET}.$port.$service.hydra 2>/dev/null
 #    then 
-#        rm -f "$RECONDIR"/${TARGET}.$service.$port.hydra 2>/dev/null
+#        rm -f "$RECONDIR"/${TARGET}.$port.$service.hydra 2>/dev/null
 #    fi       
 
     return 0
@@ -1908,28 +1910,28 @@ function postgresqlScan()
     export PGPASSWORD=postgres
 
     timeout --kill-after=10 --foreground 300 psql -w -h $TARGET -p $port -U postgres -l -x \
-        >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.postgresql 2>&1
 
-    for db in $(cat "$RECONDIR"/${TARGET}.postgresql.$port |awk '/^Name/ {print $3}')
+    for db in $(cat "$RECONDIR"/${TARGET}.$port.postgresql |awk '/^Name/ {print $3}')
     do
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port
-        echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.postgresql.$port
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.postgresql
+        echo "Tables from database $db" >> "$RECONDIR"/${TARGET}.$port.postgresql
         timeout --kill-after=10 --foreground 300 \
             psql -w -h $TARGET -p $port -U postgres -x -c 'SELECT * FROM pg_catalog.pg_tables;' -d $db \
-            >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+            >> "$RECONDIR"/${TARGET}.$port.postgresql 2>&1
     done
 
-    echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port
-    echo "select * from pg_stat_activity" >> "$RECONDIR"/${TARGET}.postgresql.$port
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.postgresql
+    echo "select * from pg_stat_activity" >> "$RECONDIR"/${TARGET}.$port.postgresql
     timeout --kill-after=10 --foreground 300 \
         psql -w -h $TARGET -p $port -U postgres -x -c 'select * from pg_stat_activity;' \
-        >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.postgresql 2>&1
 
-    echo "$BORDER" >> "$RECONDIR"/${TARGET}.postgresql.$port
-    echo "select * from pg_catalog.pg_shadow" >> "$RECONDIR"/${TARGET}.postgresql.$port
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.postgresql
+    echo "select * from pg_catalog.pg_shadow" >> "$RECONDIR"/${TARGET}.$port.postgresql
     timeout --kill-after=10 --foreground 300 \
         psql -w -h $TARGET -p $port -U postgres -x -c 'select * from pg_catalog.pg_shadow;' \
-        >> "$RECONDIR"/${TARGET}.postgresql.$port 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.postgresql 2>&1
 
     return 0
 }
@@ -1946,38 +1948,38 @@ function dockerScan()
         curl -A "$USERAGENT" --retry 20 --retry-connrefused -k -s ${proto}://${TARGET}:$port/info \
             2>/dev/null \
             |jq -M . \
-            >> "$RECONDIR"/${TARGET}.dockerinfo.${port} 2>&1
+            >> "$RECONDIR"/${TARGET}.$port.dockerinfo 2>&1
 
     timeout --kill-after=10 --foreground 300 \
         curl -A "$USERAGENT" --retry 20 --retry-connrefused -k -s ${proto}://${TARGET}:$port/networks \
             2>/dev/null \
             |jq -M . \
-            >> "$RECONDIR"/${TARGET}.dockernetworks.${port} 2>&1
+            >> "$RECONDIR"/${TARGET}.$port.dockernetworks 2>&1
 
     timeout --kill-after=10 --foreground 300 \
         curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
             -s ${proto}://${TARGET}:$port/containers/json 2>/dev/null \
             |jq -M . \
-            >> "$RECONDIR"/${TARGET}.dockercontainers.${port} 2>&1
+            >> "$RECONDIR"/${TARGET}.$port.dockercontainers 2>&1
 
-    for id in $(grep '"Id": ' "$RECONDIR"/${TARGET}.dockercontainers.${port} |cut -d'"' -f4)
+    for id in $(grep '"Id": ' "$RECONDIR"/${TARGET}.$port.dockercontainers |cut -d'"' -f4)
     do
         timeout --kill-after=10 --foreground 300 \
             curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
                 -s ${proto}://${TARGET}:${port}/containers/${id}/top 2>/dev/null \
                 |jq -M . \
-                >> "$RECONDIR"/dockertop.${port}.${id}
+                >> "$RECONDIR"/${TARGET}.$port.dockertop.${id}
         timeout --kill-after=10 --foreground 300 \
             curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
                 -s ${proto}://${TARGET}:${port}/containers/${id}/changes 2>/dev/null \
                 |jq -M . \
-                >> "$RECONDIR"/dockerchanges.${port}.${id}
+                >> "$RECONDIR"/${TARGET}.$port.dockerchanges.${id}
         timeout --kill-after=10 --foreground 300 \
             curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
                 -s "${proto}://${TARGET}:${port}/containers/${id}/archive?path=/etc/shadow" \
                 2>/dev/null \
                 |tar xf - -O \
-                >> "$RECONDIR"/dockershadow.${port}.${id} 2>/dev/null
+                >> "$RECONDIR"/${TARGET}.$port.dockershadow.${id} 2>/dev/null
 
     done
 
@@ -1985,7 +1987,7 @@ function dockerScan()
         curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
             -s ${proto}://${TARGET}:${port}/v2/_catalog 2>/dev/null \
             |jq -M . \
-            >> "$RECONDIR"/${TARGET}.dockerepo.${port} 2>&1
+            >> "$RECONDIR"/${TARGET}.$port.dockerepo 2>&1
 
     return 0
 }
@@ -1998,7 +2000,7 @@ function iscsiScan()
 
     timeout --kill-after=10 --foreground 900 \
         iscsiadm -m discovery -t st -p ${TARGET}:${port} \
-        >> "$RECONDIR"/${TARGET}.iscsiadm.${port} 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.iscsiadm 2>&1
 
     return 0
 }
@@ -2015,29 +2017,29 @@ function elasticsearchScan()
     timeout --kill-after=10 --foreground 300 \
         curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
             -s "${proto}://${TARGET}:${port}/_cat/indices?v" \
-            > "$RECONDIR"/${TARGET}.elasticsearch.${port} 2>&1
+            > "$RECONDIR"/${TARGET}.$port.elasticsearch 2>&1
 
     timeout --kill-after=10 --foreground 300 \
         curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
             -s "${proto}://${TARGET}:${port}/_all/_settings" 2>&1 \
             |jq . \
-            > "$RECONDIR"/${TARGET}.elasticsearch.${port}._all_settings 
+            > "$RECONDIR"/${TARGET}.$port.elasticsearch._all_settings 
 
     if [[ -f "$RECONDIR"/${TARGET}.elasticsearch.${port} ]]
     then
-        mkdir "$RECONDIR"/${TARGET}.elasticsearch.indexes.${port}
+        mkdir "$RECONDIR"/${TARGET}.$port.elasticsearch.indexes
         indexes=()
 
         # index will be either column 2 or 3 depending on version
         if head -1 "$RECONDIR"/${TARGET}.elasticsearch.${port} |awk '{print $2}' |grep -q index
         then
-            for index in $(awk '{print $2}' "$RECONDIR"/${TARGET}.elasticsearch.${port} |egrep -v "^index$" )
+            for index in $(awk '{print $2}' "$RECONDIR"/${TARGET}.$port.elasticsearch |egrep -v "^index$" )
             do
                 indexes[${#indexes[@]}]=$index
             done
         elif head -1 "$RECONDIR"/${TARGET}.elasticsearch.${port} |awk '{print $3}' |grep -q index
         then
-            for index in $(awk '{print $3}' "$RECONDIR"/${TARGET}.elasticsearch.${port} |egrep -v "^index$" )
+            for index in $(awk '{print $3}' "$RECONDIR"/${TARGET}.$port.elasticsearch |egrep -v "^index$" )
             do
                 indexes[${#indexes[@]}]=$index
             done
@@ -2050,7 +2052,7 @@ function elasticsearchScan()
                     -s "${proto}://${TARGET}:${port}/${index}/_stats" \
                     2>/dev/null \
                     |jq . \
-                    > "$RECONDIR"/${TARGET}.elasticsearch.indexes.${port}/$index 2>&1
+                    > "$RECONDIR"/${TARGET}.$port.elasticsearch.indexes/$index 2>&1
         done
     fi
 
@@ -2064,38 +2066,38 @@ function redisScan()
     local port=$1
     local db
 
-    echo "$BORDER" >> "$RECONDIR"/${TARGET}.redis.${port}
-    echo "Querying info for  database $db" >> "$RECONDIR"/${TARGET}.redis.${port}
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.redis
+    echo "Querying info for  database $db" >> "$RECONDIR"/${TARGET}.$port.redis
     echo 'info' |timeout --kill-after=10 --foreground 300 \
         redis-cli -h $TARGET -p $port |strings -a \
-        >> "$RECONDIR"/${TARGET}.redis.${port} 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.redis 2>&1
 
     for db in {0..16}
     do
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.redis.${port}
-        echo "Testing database $db" >> "$RECONDIR"/${TARGET}.redis.${port}
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.redis
+        echo "Testing database $db" >> "$RECONDIR"/${TARGET}.$port.redis
         timeout --kill-after=10 --foreground 90 \
             redis-cli -h $TARGET -p $port -n $db --scan \
-            >> "$RECONDIR"/${TARGET}.redis.${port} 2>&1
+            >> "$RECONDIR"/${TARGET}.$port.redis 2>&1
 
-        echo "$BORDER" >> "$RECONDIR"/${TARGET}.redis.${port}
-        echo "Querying bigkeys for database $db" >> "$RECONDIR"/${TARGET}.redis.${port}
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.redis
+        echo "Querying bigkeys for database $db" >> "$RECONDIR"/${TARGET}.$port.redis
         timeout --kill-after=10 --foreground 90 \
             redis-cli -h $TARGET -p $port -n $db --bigkeys |tail -n +7 \
-            >> "$RECONDIR"/${TARGET}.redis.${port} 2>&1
+            >> "$RECONDIR"/${TARGET}.$port.redis 2>&1
     done
 
-    echo "$BORDER" >> "$RECONDIR"/${TARGET}.redis.${port}
-    echo "Querying client list for database $db" >> "$RECONDIR"/${TARGET}.redis.${port}
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.redis
+    echo "Querying client list for database $db" >> "$RECONDIR"/${TARGET}.$port.redis
     echo 'client list' |timeout --kill-after=10 --foreground 300 \
         redis-cli -h $TARGET -p $port \
-        >> "$RECONDIR"/${TARGET}.redis.${port} 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.redis 2>&1
 
-    echo "$BORDER" >> "$RECONDIR"/${TARGET}.redis.${port}.monitor
-    echo "Running monitor for database $db" >> "$RECONDIR"/${TARGET}.redis.${port}.monitor
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.redis.monitor
+    echo "Running monitor for database $db" >> "$RECONDIR"/${TARGET}.$port.redis.monitor
     echo 'monitor' |timeout --kill-after=60 --foreground 300 \
         redis-cli -h $TARGET -p $port \
-        >> "$RECONDIR"/${TARGET}.redis.${port}.monitor 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.redis.monitor 2>&1
 
     return 0
 }
@@ -2109,13 +2111,13 @@ function ldapScan()
 
     timeout --kill-after=10 --foreground 300 \
         ldapsearch -h $TARGET -p $port -x -s base \
-        >> "$RECONDIR"/${TARGET}.ldap.${port} 2>&1
+        >> "$RECONDIR"/${TARGET}.$port.ldap 2>&1
 
-    for context in $(awk '/^namingContexts: / {print $2}' "$RECONDIR"/${TARGET}.ldap.${port})
+    for context in $(awk '/^namingContexts: / {print $2}' "$RECONDIR"/${TARGET}.$port.ldap)
     do
         timeout --kill-after=10 --foreground 300 \
             ldapsearch -h $TARGET -p $port -x -b "$context" \
-            >> "$RECONDIR"/${TARGET}.ldap.${port}.${context} 2>&1
+            >> "$RECONDIR"/${TARGET}.$port.ldap.${context} 2>&1
     done
 
 
@@ -2825,6 +2827,7 @@ function wfuzzURLs()
 
         filename=${file##*/}
         echo "$ignore" >> "${file}.ignored"
+        echo "IGNORING $ignore" >> "$RECONDIR"/${TARGET}.wfuzz/${filename%%.wfuzz.*.html}.wfuzz.html
         cat "$file" \
             |egrep -v "$ignore" \
             >> "$RECONDIR"/${TARGET}.wfuzz/${filename%%.wfuzz.*.html}.wfuzz.html 2>&1
@@ -3134,15 +3137,15 @@ function memcacheScan()
     echo "exit" >> $cmdfile
 
     timeout --kill-after=10 --foreground 3600 \
-        /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.memcached.${port}.msf.raw >/dev/null 2>&1
+        /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/tmp/${TARGET}.$port.memcached.msf.raw >/dev/null 2>&1
 
     # strip hex and convert newlines to real newlines
-    perl -pi -e 's|\\r\\n|\n|g' "$RECONDIR"/tmp/${TARGET}.memcached.${port}.msf.raw
-    perl -pi -e 's|\\x..| |g' "$RECONDIR"/tmp/${TARGET}.memcached.${port}.msf.raw
+    perl -pi -e 's|\\r\\n|\n|g' "$RECONDIR"/tmp/${TARGET}.$port.memcached.msf.raw
+    perl -pi -e 's|\\x..| |g' "$RECONDIR"/tmp/${TARGET}.$port.memcached.msf.raw
 
-    cat "$RECONDIR"/tmp/${TARGET}.memcached.${port}.msf.raw 2>&1 \
+    cat "$RECONDIR"/tmp/${TARGET}.$port.memcached.msf.raw 2>&1 \
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^UserAgent |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
-        > "$RECONDIR"/${TARGET}.memcached.${port}.msf
+        > "$RECONDIR"/${TARGET}.$port.memcached.msf
 
     return 0
 }
@@ -3473,18 +3476,6 @@ function msfCiscoScan()
     cat "$RECONDIR"/tmp/${TARGET}.cisco.msf.raw 2>&1 \
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^UserAgent |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.cisco.msf
-
-    return 0
-}
-################################################################################
-
-################################################################################
-function tnscmd10gScan()
-{
-    local port=$1
-
-    timeout --kill-after=10 --foreground 7200 \
-        tnscmd10g -h ${TARGET} -p $port >"$RECONDIR"/${TARGET}.oracle.tnscmd10g.$port 2>&1
 
     return 0
 }

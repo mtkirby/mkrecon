@@ -96,7 +96,7 @@ function MAIN()
     
     echo "examining open ports"
     echo "... outputs $RECONDIR/${TARGET}.baseurls"
-    echo "... outputs $RECONDIR/${TARGET}.port.certificate"
+    echo "... outputs $RECONDIR/${TARGET}.\$port.certificate"
     IFS=$'\n'
     for line in $(egrep '\sPorts:\s' "$RECONDIR"/${TARGET}.ngrep |sed -e 's/.*Ports: //')
     do
@@ -613,6 +613,11 @@ function MAIN()
         # do not background.  There are dependencies below.
         webDiscover 
 
+        echo "starting clusterdScan"
+        echo "... outputs $RECONDIR/${TARGET}.clusterd"
+        # do not background.  Limit number of simultaneous scans
+        clusterdScan
+
         echo "starting WAScan"
         echo "... outputs $RECONDIR/${TARGET}.\$port.WAScan"
         WAScan &
@@ -790,7 +795,7 @@ function buildEnv()
     local pkg
     local icdir
     local testdir
-    local pkgs="alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
+    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     for pkg in $pkgs
     do
@@ -1267,7 +1272,7 @@ function snmpScan()
         |sort -u \
         >"$RECONDIR"/tmp/snmp.txt
 
-    nmap -Pn -T1 -p 161 -sU --script snmp-brute $TARGET --script-args snmp-brute.communitiesdb="$RECONDIR"/tmp/snmp.txt -oN "$RECONDIR"/${TARGET}.nmap.snmp-brute >/dev/null 2>&1
+    nmap -Pn -T2 -p 161 -sU --script snmp-brute $TARGET --script-args snmp-brute.communitiesdb="$RECONDIR"/tmp/snmp.txt -oN "$RECONDIR"/${TARGET}.nmap.snmp-brute >/dev/null 2>&1
     
     if grep -q 'Valid credentials' "$RECONDIR"/${TARGET}.nmap.snmp-brute 2>/dev/null
     then
@@ -2126,6 +2131,26 @@ function ldapScan()
 ################################################################################
 
 ################################################################################
+function clusterdScan()
+{
+    local port
+
+    for port in ${HTTPPORTS[@]} ${HTTPSPORTS[@]}
+    do
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.clusterd
+        echo "TESTING $IP $port" >> "$RECONDIR"/${TARGET}.clusterd
+        timeout --kill-after=10 --foreground 600 \
+            clusterd -i ${IP} -p port 2>&1 \
+            |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
+            |strings -a \
+            >> "$RECONDIR"/${TARGET}.clusterd
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.clusterd
+    done
+
+    return 0
+}
+
+################################################################################
 function webDiscover()
 {
     local a_dirbfiles=()
@@ -2744,6 +2769,9 @@ function wfuzzURLs()
             post="-d \"$post\""
         fi
 
+        grep -v sleep /usr/share/seclists/Fuzzing/Command-Injection-commix.txt \
+            >"$RECONDIR"/tmp/Command-Injection-commix.txt
+
         for fuzzdict in /usr/share/wfuzz/wordlist/vulns/sql_inj.txt \
             /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt \
             /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt \
@@ -2759,7 +2787,8 @@ function wfuzzURLs()
             /usr/share/seclists/Fuzzing/XSS-JHADDIX.txt \
             /usr/share/seclists/Fuzzing/XSS-RSNAKE-.txt \
             /usr/share/seclists/Fuzzing/XSS-STRINGS-BRUTELOGIC.txt \
-            /usr/share/seclists/Fuzzing/XXE-Fuzzing.txt 
+            /usr/share/seclists/Fuzzing/XXE-Fuzzing.txt \
+            "$RECONDIR"/tmp/Command-Injection-commix.txt 
         do
             if [[ ! -f "$fuzzdict" ]]
             then
@@ -2994,6 +3023,7 @@ function wigScan()
 function scanURLs()
 {
     local url
+    local cms
 
     screen -dmS ${TARGET}.urlsew.$RANDOM timeout --kill-after=10 --foreground 172800 \
         eyewitness --user-agent "$USERAGENT" --threads 2 -d "$RECONDIR"/${TARGET}.urlsEyeWitness \
@@ -3006,11 +3036,33 @@ function scanURLs()
         if [[ "$(echo $url |grep -o '.' |grep -c '/')" -le 4 ]] \
         && ! egrep -q "^$url" "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
         then
+            # whatweb
             timeout --kill-after=10 --foreground 3600 \
                 whatweb -U "$USERAGENT" -a3 -t2 --color=never "$url" \
                 |strings -a \
                 >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
             echo '' >> "$RECONDIR"/${TARGET}.whatweb 2>/dev/null
+
+            # droopescan
+            if ! which droopescan >/dev/null 2>&1
+            then
+                echo "Installing droopescan"
+                pip install --upgrade droopescan >/dev/null 2>&1
+            fi
+            pip install --upgrade-strategy=eager droopescan >/dev/null 2>&1 
+
+            for cms in drupal joomla moodle silverstripe wordpress
+            do
+                echo "$BORDER" >> "$RECONDIR"/${TARGET}.droopescan
+                echo "TESTING URL $url" >> "$RECONDIR"/${TARGET}.droopescan
+                timeout --kill-after=10 --foreground 900 \
+                    droopescan scan $cms -n 'all' -e a -t 2 --hide-progressbar -u "$url" 2>&1 \
+                    |grep -v 'Got an HTTP 500 response.' \
+                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
+                    |strings -a \
+                    >> "$RECONDIR"/${TARGET}.droopescan
+                echo "$BORDER" >> "$RECONDIR"/${TARGET}.droopescan
+            done
         fi
     done
 
@@ -3064,7 +3116,8 @@ function fimapScan()
     local url
 
     # run fimap on anything with php
-    for url in $(egrep -i '\.php$' "$RECONDIR"/${TARGET}.urls |awk '{print $1}')
+    #for url in $(egrep -i '\.php$' "$RECONDIR"/${TARGET}.urls |awk '{print $1}')
+    for url in $(cat "$RECONDIR"/${TARGET}.urls)
     do
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.fimap
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.fimap

@@ -30,7 +30,7 @@ WHAT MKRECON DOES
 - dirb with multiple dictionaries on all web service ports
 - spider the discovered dirb urls
 - hydra on discovered web directories that require auth (code 401)
-- For any webservice discovered on any port: arachni, whatweb, Joomscan, WPScan, fimap, WAScan, nikto, wafw00f, wapiti, wig, ZAP, sqlmap, skipfish, cewl, davtest, cadaver, exif, and metasploit http modules
+- For any webservice discovered on any port: arachni, whatweb, Joomscan, WPScan, clusterd, droopescan, fimap, WAScan, nikto, wafw00f, wapiti, wig, ZAP, sqlmap, skipfish, cewl, davtest, cadaver, exif, and metasploit http modules
 - eyewitness (screenshots) of the discovered web pages
 - routersploit on discovered telnet, ssh, ftp, web services
 - mech-dump of pages with parameters

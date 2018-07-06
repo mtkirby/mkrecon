@@ -40,6 +40,7 @@ WHAT MKRECON DOES
 - discover redis and pull records
 - discover zookeeper and pull records
 - discover mesos and pull records
+- discover mongodb and pull records.  Crack password hashes with rockyou dictionary.
 - show nfs shares and content
 - show rsync shares and content
 - show smb shares and content
@@ -48,8 +49,8 @@ WHAT MKRECON DOES
 - try simple postgres auth and pull users/password hashes
 - try simple mysql auth and pull users/password hashes
 - show iscsi info
-- retrieve ike keys and try to crack them
-- retrieve ipmi password hashes and try to crack them
+- retrieve ike keys and try to crack them with rockyou dictionary.
+- retrieve ipmi password hashes and try to crack them with rockyou dictionary.
 - show ldap info
 - show memcached info
 - try to retrieve Java RMI data

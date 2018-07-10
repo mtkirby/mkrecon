@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180705
+# version 20180710
 
 umask 077
 
@@ -666,7 +666,7 @@ function MAIN()
         niktoScan &
 
         echo "starting arachniScan"
-        echo "... outputs $RECONDIR/${TARGET}/arachni.d"
+        echo "... outputs $RECONDIR/${TARGET}/arachni"
         # do not background.  Limit number of simultaneous scans
         arachniScan 
 
@@ -2149,9 +2149,9 @@ function clusterdScan()
     for port in ${HTTPPORTS[@]} ${HTTPSPORTS[@]}
     do
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.clusterd
-        echo "TESTING $IP $port" >> "$RECONDIR"/${TARGET}.clusterd
+        echo "TESTING $TARGET $port" >> "$RECONDIR"/${TARGET}.clusterd
         timeout --kill-after=10 --foreground 600 \
-            clusterd -i ${IP} -p port 2>&1 \
+            clusterd -i $TARGET -p $port 2>&1 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.clusterd
@@ -2394,7 +2394,8 @@ function zapScan()
     # Start a new zap session.  We don't want to interfere with another session
     for port in {8091..8199}
     do 
-        if ! zap-cli --api-key notMyPassword -p $port status 2>&1|grep -q "ZAP is running"
+        if ! zap-cli --api-key notMyPassword -p $port status 2>&1|grep -q "ZAP is running" \
+        && ! screen -ls 2>&1 |grep -q "zap$port"
         then
             echo "Starting zap proxy on port $port in screen session"
             screen -dmS ${TARGET}.zap${port} /usr/share/zaproxy/zap.sh -daemon -newsession "$RECONDIR"/tmp/zapsession -host localhost -port $port -config api.key=notMyPassword
@@ -3778,7 +3779,7 @@ function crackers()
 
     # brutespray uses service-specific wordlists in /usr/share/brutespray/wordlist
     timeout --kill-after=10 --foreground 172800 \
-        brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c -o "$RECONDIR"/${TARGET}.brutespray.d >/dev/null 2>&1
+        brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c -o "$RECONDIR"/${TARGET}.brutespray >/dev/null 2>&1
 
     return 0
 }
@@ -3828,8 +3829,8 @@ function arachniScan()
     local file
     local report
 
-    mkdir -p "$RECONDIR"/${TARGET}-arachni.d >/dev/null 2>&1
-    mkdir -p "$RECONDIR"/tmp/arachni.d >/dev/null 2>&1
+    mkdir -p "$RECONDIR"/${TARGET}-arachni >/dev/null 2>&1
+    mkdir -p "$RECONDIR"/tmp/arachni >/dev/null 2>&1
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
@@ -3837,7 +3838,7 @@ function arachniScan()
         timeout --kill-after 10 --foreground 172800 \
             arachni --http-user-agent "$USERAGENT" --audit-links --audit-forms --audit-ui-forms \
             --audit-ui-inputs --audit-xmls --audit-jsons --timeout=47:30:0 --output-only-positives \
-            --http-request-concurrency=1 --report-save-path="$RECONDIR"/tmp/arachni.d $url \
+            --http-request-concurrency=1 --report-save-path="$RECONDIR"/tmp/arachni $url \
             >"$RECONDIR"/tmp/arachni.$count.out 2>&1 &
     done
 
@@ -3847,13 +3848,13 @@ function arachniScan()
     done
 
     i=0
-    for file in "$RECONDIR"/tmp/arachni.d/*.afr
+    for file in "$RECONDIR"/tmp/arachni/*.afr
     do
         # arachni_reporter outputs to a zip file in /usr/share/arachni/bin
         # I hope they fix this bug someday
         let i++
         report=$(arachni_reporter  --reporter html "$file" 2>&1 |grep 'HTML: Saved in' |cut -d"'" -f2)
-        unzip -d "$RECONDIR"/${TARGET}-arachni.d/$i /usr/share/arachni/bin/"$report" >/dev/null 2>&1
+        unzip -d "$RECONDIR"/${TARGET}-arachni/$i /usr/share/arachni/bin/"$report" >/dev/null 2>&1
         rm -f /usr/share/arachni/bin/"$report" >/dev/null 2>&1
     done
 
@@ -4049,7 +4050,7 @@ set > /tmp/set1
 export PYTHONHTTPSVERIFY=0
 export PERL_LWP_SSL_VERIFY_HOSTNAME=0
 shopt -s nocasematch
-renice 5 $$
+renice 5 $$ >/dev/null 2>&1
 
 MAIN $*
 stty sane >/dev/null 2>&1

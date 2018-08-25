@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180710
+# version 20180823
 
 umask 077
 
@@ -879,7 +879,7 @@ function buildEnv()
 
     cat /usr/share/seclists/Passwords/Common-Credentials/best110.txt \
         /usr/share/seclists/Passwords/Common-Credentials/top-20-common-SSH-passwords.txt \
-        /usr/share/seclists/Passwords/Common-Credentials/top-shortlist.txt \
+        /usr/share/seclists/Passwords/Common-Credentials/top-passwords-shortlist.txt \
         /usr/share/wordlists/metasploit/idrac_default_pass.txt \
         /usr/share/wordlists/metasploit/adobe_top100_pass.txt \
         /usr/share/wordlists/metasploit/db2_default_pass.txt \
@@ -3015,7 +3015,6 @@ function wigScan()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
         echo "Testing $url" >> "$RECONDIR"/${TARGET}.wig 
         timeout --kill-after=10 --foreground 1800 \
-            /usr/bin/time -v \
             wig -q -t 1 -a -d $url 2>&1 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
@@ -3446,7 +3445,7 @@ function msfHttpScan()
         -x 'search auxiliary/scanner/http/; exit' \
         |awk '{print $1}' \
         |grep 'auxiliary/scanner/http/' \
-        |egrep -v 'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass|http/xpath|http/hp_' \
+        |egrep -v 'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass|http/xpath|http/hp_|/crawler' \
         )
     do
         httpscans[${#httpscans[@]}]=$msfscan

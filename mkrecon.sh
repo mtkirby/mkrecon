@@ -2257,7 +2257,7 @@ function webDiscover()
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
         timeout --kill-after=10 --foreground 14400 \
-            dirb "$url" "$webwordsfile" -a "$USERAGENT" -f -S \
+            dirb "$url" "$webwordsfile" -a "$USERAGENT" -w -f -S \
             >> "$dirboutraw" 2>&1
     done
 

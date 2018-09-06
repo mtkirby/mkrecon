@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180823
+# version 20180906
 
 umask 077
 
@@ -56,12 +56,6 @@ function MAIN()
     buildEnv || exit 1
     cd "$RECONDIR" || exit 1
     
-    echo "starting openvasScan"
-    echo "... outputs $RECONDIR/${TARGET}.openvas.csv"
-    echo "... outputs $RECONDIR/${TARGET}.openvas.html"
-    echo "... outputs $RECONDIR/${TARGET}.openvas.txt"
-    openvasScan &
-
     echo "starting snmpScan"
     echo "... outputs $RECONDIR/${TARGET}.nmap.snmp-brute"
     echo "... outputs $RECONDIR/${TARGET}.snmp-check if anything found"
@@ -81,6 +75,13 @@ function MAIN()
         echo "FAILED: no ports found"
         exit 1
     fi
+
+    echo "starting openvasScan"
+    echo "... outputs $RECONDIR/${TARGET}.openvas.csv"
+    echo "... outputs $RECONDIR/${TARGET}.openvas.html"
+    echo "... outputs $RECONDIR/${TARGET}.openvas.txt"
+    openvasScan &
+
     echo "starting crackers"
     echo "... outputs $RECONDIR/${TARGET}.ncrack"
     echo "... outputs $RECONDIR/${TARGET}.brutespray"
@@ -126,6 +127,8 @@ function MAIN()
             if [[ $version =~ ^[A-Za-z]... ]] \
             && ! grep -q "SEARCHING FOR $version" "$RECONDIR"/${TARGET}.searchsploit
             then
+                echo "running searchsploit for $version"
+                echo "... outputs $RECONDIR/${TARGET}.searchsploit"
                 sstitle=${version%% *}
                 sstitle=${sstitle%%/*}
                 echo "$BORDER" >> "$RECONDIR"/${TARGET}.searchsploit 
@@ -157,7 +160,7 @@ function MAIN()
                 UDPPORTS[${#UDPPORTS[@]}]=$port
             fi
 
-            echo "examining port $port"
+            echo "examining port $port/$protocol service $service $version"
 
             if [[ $service =~ cisco ]] \
             || [[ $version =~ cisco ]] 
@@ -330,7 +333,6 @@ function MAIN()
             then
                 # nmap cannot yet identify the kafka service, so test anything tcp
                 echo "... testing $port for kafka"
-
                 if kafkacat -b $TARGET:$port -L >/dev/null 2>&1
                 then
                     echo "starting kafkaScan for port $port"
@@ -612,6 +614,10 @@ function MAIN()
 
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
+        #echo "starting webWords"
+        #echo "... outputs $RECONDIR/${TARGET}.webwords"
+        #webWords 
+
         echo "starting webDiscover"
         echo "... outputs $RECONDIR/${TARGET}.robots.txt"
         echo "... outputs $RECONDIR/${TARGET}.robotspider.html"
@@ -669,11 +675,6 @@ function MAIN()
         echo "... outputs $RECONDIR/${TARGET}/arachni"
         # do not background.  Limit number of simultaneous scans
         arachniScan 
-
-        # Enable when trying harder...
-        #echo "starting webWords"
-        #echo "... outputs $RECONDIR/${TARGET}.webwords"
-        #webWords 
     fi
     
     if [[ -f "$RECONDIR"/${TARGET}.spider ]]
@@ -958,37 +959,37 @@ function buildEnv()
         |sort -u \
         > "$RECONDIR"/tmp/defaultoracleuserpass.nmap
 
-    echo '.cvspass' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.Xauthority' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.vnc/passwd' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.lesshst' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.viminfo' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.netrc' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.ssh/id_rsa' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.ssh/id_dsa' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.ssh/id_ecdsa' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.git' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.gitconfig' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.wget-hsts' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.smb/smb.conf' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.dropbox' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.rsyncpw' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo '.k5login' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'security.txt' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'dashboard' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'xvwa' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'Labs' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'unsafebank' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'webalizer' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'wls-wsat/RegistrationPortTypeRPC' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'wls-wsat/ParticipantPortType' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'wls-wsat/RegistrationRequesterPortType' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'wls-wsat/CoordinatorPortType11' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'wls-wsat/CoordinatorPortType' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'wls-wsat/RegistrationPortTypeRPC11' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'wls-wsat/ParticipantPortType11' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'wls-wsat/RegistrationRequesterPortType11' >> "$RECONDIR"/tmp/mkrecon.txt
-    echo 'wls-wsat/CoordinatorPortType' >> "$RECONDIR"/tmp/mkrecon.txt
+    echo '.cvspass' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.Xauthority' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.vnc/passwd' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.lesshst' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.viminfo' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.netrc' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.ssh/id_rsa' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.ssh/id_dsa' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.ssh/id_ecdsa' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.git' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.gitconfig' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.wget-hsts' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.smb/smb.conf' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.dropbox' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.rsyncpw' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.k5login' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'security.txt' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'dashboard' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'xvwa' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'Labs' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'unsafebank' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'webalizer' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'wls-wsat/RegistrationPortTypeRPC' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'wls-wsat/ParticipantPortType' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'wls-wsat/RegistrationRequesterPortType' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'wls-wsat/CoordinatorPortType11' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'wls-wsat/CoordinatorPortType' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'wls-wsat/RegistrationPortTypeRPC11' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'wls-wsat/ParticipantPortType11' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'wls-wsat/RegistrationRequesterPortType11' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'wls-wsat/CoordinatorPortType' >> "$RECONDIR"/tmp/mkrweb.txt
 
 
     if [[ ! -f /usr/share/wordlists/rockyou.txt ]]
@@ -1274,8 +1275,8 @@ function snmpScan()
     local community
 
     cat /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \
-        /usr/share/nmap/nselib/data/snmpcommunities.lst \
         /usr/share/seclists/Discovery/SNMP/snmp.txt \
+        /usr/share/nmap/nselib/data/snmpcommunities.lst \
         /usr/lib/python3/dist-packages/routersploit/resources/wordlists/snmp.txt \
         /usr/share/wordlists/metasploit/snmp_default_pass.txt \
         |dos2unix -f \
@@ -2168,31 +2169,43 @@ function webDiscover()
     local a_robots=()
     local a_urls=()
     local dirbfile
+    local dirboutraw="$RECONDIR/tmp/dirbout.raw"
     local newurl
     local port
     local robotdir
     local shortfile
     local sslflag
     local url
+    local webwordsfile="$RECONDIR/tmp/webwordsfile"
     local wordlist
     local urlfile
 
     IFS=$'\n'
     # Build dirb dictionary array
     for wordlist in /usr/share/dirb/wordlists/common.txt \
-    /usr/share/dirb/wordlists/vulns/*txt \
-    /usr/share/wordlists/metasploit/sap_icm_paths.txt \
-    /usr/share/wordlists/metasploit/joomla.txt \
-    /usr/share/wordlists/metasploit/http_owa_common.txt \
-    /usr/share/wfuzz/wordlist/general/admin-panels.txt \
-    "$RECONDIR"/tmp/mkrecon.txt \
-    "$RECONDIR"/${TARGET}.webwords 
+        /usr/share/dirb/wordlists/vulns/*txt \
+        /usr/share/wfuzz/wordlist/general/admin-panels.txt \
+        /usr/share/seclists/Discovery/Web-Content/CMS/*.txt \
+        /usr/share/seclists/Discovery/Web-Content/*.txt \
+        /usr/share/seclists/Discovery/Web-Content/URLs/*.txt \
+        "$RECONDIR"/tmp/mkrweb.txt 
     do
+        if [[ $wordlist =~ raft|LinuxFileList|default-web-root|big.txt|common-and ]]
+        then 
+            continue
+        fi
         if [[ -f "$wordlist" ]]
         then
             a_dirbfiles[${#a_dirbfiles[@]}]=$wordlist
+        else
+            echo "webDiscover could not find wordlist file $wordlist"
+            echo "A Kali update may have moved it."
+            echo "Continuing anyways."
         fi
     done
+
+    cat $(echo "${a_dirbfiles[*]}") 2>/dev/null |sort -u > "$webwordsfile"
+
 
     # first run through baseurls
     # Get robots.txt and spider the baseurls
@@ -2243,16 +2256,9 @@ function webDiscover()
     # second run through baseurls.  dirb may take hours
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
-        # do not put all txt files on dirb cmdline cuz it truncates it's args
-        # instead iterate over an array
-        mkdir -p "$RECONDIR"/tmp/${TARGET}.dirb >/dev/null 2>&1
-        for dirbfile in ${a_dirbfiles[@]}
-        do
-            shortfile=${dirbfile##*/}
-            timeout --kill-after=10 --foreground 1800 \
-                dirb "$url" "$dirbfile" -a "$USERAGENT" -r -f -S \
-                    >> "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-${shortfile}.dirb 2>&1
-        done
+        timeout --kill-after=10 --foreground 14400 \
+            dirb "$url" "$webwordsfile" -a "$USERAGENT" -f -S \
+            >> "$dirboutraw" 2>&1
     done
 
     # build html file from robots.txt files
@@ -2261,7 +2267,7 @@ function webDiscover()
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.robotspider.html
     done
 
-    for url in $(grep CODE:200 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb \
+    for url in $(grep CODE:200 "$dirboutraw" \
         |grep -v SIZE:0 \
         |awk '{print $2}' \
         |sort -u)
@@ -2269,7 +2275,7 @@ function webDiscover()
         echo "${url%\?*}" >> "$RECONDIR"/tmp/${TARGET}.dirburls.raw
     done
 
-    for url in $(grep '==> DIRECTORY: ' "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb \
+    for url in $(grep '==> DIRECTORY: ' "$dirboutraw" \
         |awk '{print $3}' \
         |sort -u)
     do
@@ -2583,10 +2589,10 @@ function webWords()
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
         # collect words from websites
-        timeout --kill-after=10 --foreground 1800 \
+        timeout --kill-after=10 --foreground 90 \
             wget -U "$USERAGENT" \
-                --tries=20 --retry-connrefused -rq -D $TARGET -O "$RECONDIR"/tmp/wget.dump "$url" \
-                >/dev/null 2>&1
+            --tries=20 --retry-connrefused -rq -D $TARGET -O "$RECONDIR"/tmp/wget.dump "$url" \
+            >/dev/null 2>&1
         if [[ -f "$RECONDIR"/tmp/wget.dump ]]
         then
             html2dic "$RECONDIR"/tmp/wget.dump 2>/dev/null \
@@ -2784,18 +2790,21 @@ function wfuzzURLs()
         for fuzzdict in /usr/share/wfuzz/wordlist/vulns/sql_inj.txt \
             /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt \
             /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt \
-            /usr/share/seclists/Fuzzing/DB2Enumeration.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/Polyglots/XSS-Polyglots-Dmiessler.txt \
+            /usr/share/seclists/Fuzzing/Polyglots/XSS-Polyglots.txt \
+            /usr/share/seclists/Fuzzing/Polyglots/XSS-Polyglot-Ultimate-0xsobky.txt \
             /usr/share/seclists/Fuzzing/Generic-SQLi.txt \
             /usr/share/seclists/Fuzzing/LDAP.Fuzzinging.txt \
-            /usr/share/seclists/Fuzzing/MSSQL-Enumeration.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/LFI-JHADDIX.txt \
+            /usr/share/seclists/Fuzzing/MSSQL.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/MYSQL.fuzzdb.txt \
             /usr/share/seclists/Fuzzing/NoSQL.txt \
             /usr/share/seclists/Fuzzing/Oracle.fuzzdb.txt \
-            /usr/share/seclists/Fuzzing/Postgres-Enumeration.fuzzdb.txt \
             /usr/share/seclists/Fuzzing/SSI-Injection-JHADDIX.txt \
-            /usr/share/seclists/Fuzzing/XSS-BYPASS-STRINGS-BRUTELOGIC.txt \
+            /usr/share/seclists/Fuzzing/UnixAttacks.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/XSS-BruteLogic.txt \
             /usr/share/seclists/Fuzzing/XSS-JHADDIX.txt \
-            /usr/share/seclists/Fuzzing/XSS-RSNAKE-.txt \
-            /usr/share/seclists/Fuzzing/XSS-STRINGS-BRUTELOGIC.txt \
+            /usr/share/seclists/Fuzzing/XSS-RSNAKE.txt \
             /usr/share/seclists/Fuzzing/XXE-Fuzzing.txt
         do
             if [[ ! -f "$fuzzdict" ]]

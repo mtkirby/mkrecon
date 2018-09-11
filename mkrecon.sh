@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180906
+# version 20180910
 
 umask 077
 
@@ -55,6 +55,13 @@ function MAIN()
     
     buildEnv || exit 1
     cd "$RECONDIR" || exit 1
+
+    echo "$BORDER"
+    echo "# mkrecon may take anywhere between a few minutes to upto 1 week depending on services."
+    echo "# Some tasks are backgrounded, depending on network impact."
+    echo "# jobs limit is set to $JOBSLIMIT"
+    echo "# If you want to increase the number of active jobs, edit $JOBSLIMITFILE"
+    echo "$BORDER"
     
     echo "starting snmpScan"
     echo "... outputs $RECONDIR/${TARGET}.nmap.snmp-brute"
@@ -127,10 +134,10 @@ function MAIN()
             if [[ $version =~ ^[A-Za-z]... ]] \
             && ! grep -q "SEARCHING FOR $version" "$RECONDIR"/${TARGET}.searchsploit
             then
-                echo "running searchsploit for $version"
-                echo "... outputs $RECONDIR/${TARGET}.searchsploit"
                 sstitle=${version%% *}
                 sstitle=${sstitle%%/*}
+                echo "running searchsploit for $sstitle"
+                echo "... outputs $RECONDIR/${TARGET}.searchsploit"
                 echo "$BORDER" >> "$RECONDIR"/${TARGET}.searchsploit 
                 echo "SEARCHING FOR $version" >> "$RECONDIR"/${TARGET}.searchsploit
                 searchsploit --colour -t "$sstitle" >> "$RECONDIR"/${TARGET}.searchsploit 2>&1 
@@ -160,7 +167,7 @@ function MAIN()
                 UDPPORTS[${#UDPPORTS[@]}]=$port
             fi
 
-            echo "examining port $port/$protocol service $service $version"
+            echo "examining port $port/$protocol $version"
 
             if [[ $service =~ cisco ]] \
             || [[ $version =~ cisco ]] 
@@ -539,7 +546,7 @@ function MAIN()
                 echo "... outputs $RECONDIR/${TARGET}.$port.dockerchanges.${id}"
                 echo "... outputs $RECONDIR/${TARGET}.$port.dockershadow.${id}"
                 echo "... outputs $RECONDIR/${TARGET}.$port.dockerepo"
-                dockerScan $port $proto 
+                dockerScan $port $proto &
             fi
 
             # postgres
@@ -618,7 +625,7 @@ function MAIN()
         #echo "... outputs $RECONDIR/${TARGET}.webwords"
         #webWords 
 
-        echo "starting webDiscover"
+        echo "starting webDiscover.  This may take several hours per web service."
         echo "... outputs $RECONDIR/${TARGET}.robots.txt"
         echo "... outputs $RECONDIR/${TARGET}.robotspider.html"
         echo "... outputs $RECONDIR/${TARGET}.dirburls"
@@ -633,7 +640,7 @@ function MAIN()
         echo "starting clusterdScan"
         echo "... outputs $RECONDIR/${TARGET}.clusterd"
         # do not background.  Limit number of simultaneous scans
-        clusterdScan
+        clusterdScan &
 
         echo "starting WAScan"
         echo "... outputs $RECONDIR/${TARGET}.\$port.WAScan"
@@ -653,28 +660,23 @@ function MAIN()
 
         echo "starting wigScan"
         echo "... outputs $RECONDIR/${TARGET}.wig"
-        # do not background.  Limit number of simultaneous scans
-        wigScan 
-
-        echo "starting wapitiScan"
-        echo "... outputs $RECONDIR/${TARGET}.\$port.wapiti"
-        # do not background.  Limit number of simultaneous scans
-        wapitiScan 
+        wigScan &
 
         echo "starting wafw00fScan"
         echo "... outputs $RECONDIR/${TARGET}.wafw00f"
-        # do not background.  Limit number of simultaneous scans
-        wafw00fScan 
+        wafw00fScan &
 
         echo "starting niktoScan"
         echo "... outputs $RECONDIR/${TARGET}.nikto"
-        # background because nikto tends to pause
         niktoScan &
 
         echo "starting arachniScan"
         echo "... outputs $RECONDIR/${TARGET}/arachni"
-        # do not background.  Limit number of simultaneous scans
-        arachniScan 
+        arachniScan &
+
+        echo "starting wapitiScan"
+        echo "... outputs $RECONDIR/${TARGET}.\$port.wapiti"
+        wapitiScan &
     fi
     
     if [[ -f "$RECONDIR"/${TARGET}.spider ]]
@@ -714,7 +716,7 @@ function MAIN()
         echo "... outputs $RECONDIR/${TARGET}.wpscan if anything found"
         echo "... outputs $RECONDIR/${TARGET}.joomscan if anything found"
         # do not background.  Limit number of simultaneous scans
-        scanURLs 
+        scanURLs &
 
         echo "starting fimapScan"
         echo "... outputs $RECONDIR/${TARGET}.fimap if anything found"
@@ -723,12 +725,12 @@ function MAIN()
         echo "starting mechDumpURLs"
         echo "... outputs $RECONDIR/${TARGET}.mech-dump"
         # do not background mech-dump.  There are dependencies in wfuzzURLs.
-        mechDumpURLs 
+        mechDumpURLs &
 
         echo "starting zapScan"
         echo "... outputs $RECONDIR/${TARGET}.zap.html"
         # do not background.  Limit number of simultaneous scans
-        zapScan 
+        zapScan &
 
         echo "starting wfuzzURLs"
         echo "... outputs $RECONDIR/${TARGET}.wfuzz/"
@@ -745,14 +747,12 @@ function MAIN()
     jobscount=0
     while jobs |grep -q Running
     do
-        echo "Jobs are still running.  Waiting... $jobscount out of 2880 minutes"
+        echo "Jobs are still running.  Waiting... $jobscount out of 10080 minutes"
         jobs -l
         (( jobscount++ ))
-        if [[ "$jobscount" -gt 2880 ]]
+        if [[ "$jobscount" -gt 10080 ]]
         then
             echo "killing jobs"
-            #killHangs
-            #sleep 60
             IFS=$'\n'
             for job in $(jobs -l |awk '{print $2}')
             do
@@ -774,6 +774,66 @@ function MAIN()
     fi
     
     set +x
+}
+################################################################################
+
+################################################################################
+function jobunlock()
+{ 
+    local function=$1
+    local tmpfile="${JOBSFILE}.tmp"
+
+    echo "jobunlock: unlocking $function"
+
+    while [[ -f "$tmpfile" ]]
+    do
+        sleep $(( ( RANDOM * RANDOM + 1 ) % 30 + 3 ))
+    done
+    cat "$JOBSFILE" 2>&1 |egrep -v $function >> "$tmpfile"
+    mv -f "$tmpfile" "$JOBSFILE" >/dev/null 2>&1
+
+    return 0
+}
+################################################################################
+
+################################################################################
+function joblock()
+{ 
+    local function=$1
+    local jobscount
+    local joblist
+    local job
+
+
+    # many jobs may kick off simultaneously, so sleep a bit first
+    sleep $(( ( RANDOM * RANDOM + 1 ) % 30 + 3 ))
+
+    while true
+    do
+        if [[ -f "$JOBSLIMITFILE" ]]
+        then
+            JOBSLIMIT=$(head -1 "$JOBSLIMITFILE")
+        fi
+        jobscount=$(cat "$JOBSFILE" 2>/dev/null |wc -l)
+        if [[ $jobscount -ge $JOBSLIMIT ]]
+        then
+            unset 'joblist[@]'
+            for job in $(cat "$JOBSFILE")
+            do
+                joblist[${#joblist[@]}]=$job
+            done
+            echo ""
+            echo "joblock: $function is waiting for other jobs to finish. Limit $JOBSLIMIT"
+            echo "Running Jobs: ${joblist[@]}"
+            sleep $(( ( RANDOM * RANDOM + 1 ) % 60 + 60 ))
+        else
+            echo $function >> "$JOBSFILE"
+            echo "joblock: allowing $function to run"
+            return 0
+        fi
+    done
+
+    return 0
 }
 ################################################################################
 
@@ -824,6 +884,13 @@ function buildEnv()
     BORDER='################################################################################' 
     DATE=$(date +"%Y%m%d%H%M")
     USERAGENT='Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/5.0)'
+    JOBSFILE="/tmp/mkrecon.${TARGET}.jobs"
+    JOBSLIMIT=2
+    JOBSLIMITFILE="/tmp/mkrecon.${TARGET}.jobslimit"
+
+    rm -f "$JOBSFILE" >/dev/null 2>&1
+    touch "$JOBSFILE"
+    echo $JOBSLIMIT > $JOBSLIMITFILE
 
     if [[ "$LOGNAME" != "root" ]]
     then
@@ -1140,6 +1207,8 @@ function buildEnv()
 ################################################################################
 function otherNmaps()
 {
+    joblock ${FUNCNAME[0]}
+
     local tcpports
     local udpports
     local scanports
@@ -1150,33 +1219,49 @@ function otherNmaps()
     scanports=$(joinBy , $tcpports $udpports)
 
     ( timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=ajp-brute -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET 2>&1 \
+        nmap -T2 -Pn -p $scanports --script=ajp-brute \
+        -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET 2>&1 \
         |grep -q '|' \
-        || rm -f "$RECONDIR"/${TARGET}.nmap-ajp-brute ) &
+        || rm -f "$RECONDIR"/${TARGET}.nmap-ajp-brute 
+    ) &
 
     ( timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=xmpp-brute -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET 2>&1 \
+        nmap -T2 -Pn -p $scanports --script=xmpp-brute \
+        -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET 2>&1 \
         |grep -q '|' \
-        || rm -f "$RECONDIR"/${TARGET}.nmap-xmpp-brute ) &
+        || rm -f "$RECONDIR"/${TARGET}.nmap-xmpp-brute 
+    ) &
 
     ( timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=oracle-sid-brute -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET >/dev/null 2>&1 
+        nmap -T2 -Pn -p $scanports --script=oracle-sid-brute \
+        -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET >/dev/null 2>&1 
         if grep -q '|' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute
         then
             for sid in $(awk '/^\|/ {print $2}' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute |grep -v oracle-sid-brute)
             do
-                timeout --kill-after=10 --foreground 172800 nmap -T2 -Pn -p $scanports --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET >/dev/null 2>&1 &
-                timeout --kill-after=10 --foreground 172800 nmap -T2 -Pn -p $scanports --script oracle-enum-users --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET >/dev/null 2>&1 &
+                timeout --kill-after=10 --foreground 172800 nmap -T2 -Pn -p $scanports \
+                    --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid \
+                    -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET \
+                    >/dev/null 2>&1 &
+                timeout --kill-after=10 --foreground 172800 nmap -T2 -Pn -p $scanports \
+                    --script oracle-enum-users \
+                    --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst \
+                    -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET \
+                    >/dev/null 2>&1 &
             done
         else
             rm -f "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute 
         fi
     ) &
 
-    ( timeout --kill-after=10 --foreground 172800 nmap -T3 -Pn -sU -p 623 --script ipmi-brute -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET |grep -q '|' \
+    ( timeout --kill-after=10 --foreground 172800 \
+        nmap -T3 -Pn -sU -p 623 --script ipmi-brute \
+        -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET \
+        |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute \
         ; grep -q 'open|filtered' "$RECONDIR"/${TARGET}.nmap-ipmi-brute 2>/dev/null \
-        && rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute ) &
+        && rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute 
+    ) &
 
     screen -dmS ${TARGET}.nmap-auth.$RANDOM timeout --kill-after=10 --foreground 172800 \
         nmap -T2 -Pn -p $scanports --script=auth --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
@@ -1187,6 +1272,7 @@ function otherNmaps()
     screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM timeout --kill-after=10 --foreground 172800 \
         nmap -T2 -Pn -p $scanports --script=discovery,safe --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
     
+    jobunlock ${FUNCNAME[0]}
     return 0
 }    
 ################################################################################
@@ -1204,6 +1290,7 @@ function openvasScan()
     local reportTXT
     local reportHTML
     local pkg
+    local startepoch=$(date +%s)
 
     if ! omp -u $ovusername -w $ovpassword -g >/dev/null 2>&1
     then
@@ -1263,6 +1350,7 @@ function openvasScan()
     omp -u $ovusername -w $ovpassword --get-report $scanUuid --format $reportHTML \
         >"$RECONDIR"/${TARGET}.openvas.html 2>&1
 
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1270,9 +1358,8 @@ function openvasScan()
 ################################################################################
 function snmpScan()
 {
-    # snmp
-    # nmap has false negatives on snmp detection.  We'll try communities with snmp-check.
     local community
+    local startepoch=$(date +%s)
 
     cat /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \
         /usr/share/seclists/Discovery/SNMP/snmp.txt \
@@ -1298,6 +1385,7 @@ function snmpScan()
         done
     fi
 
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1306,6 +1394,7 @@ function snmpScan()
 ################################################################################
 function nmapScan()
 {
+    local startepoch=$(date +%s)
     # other udp ports: U:111,123,12444,1258,13,13200,1604,161,17185,17555,177,1900,20110,20510,2126,2302,23196,26000,27138,27244,27777,27950,28138,30710,3123,31337,3478,3671,37,3702,3784,389,44818,4569,47808,49160,49161,49162,500,5060,53,5351,5353,5683,623,636,64738,6481,67,69,8611,8612,8767,88,9100,9600 
     nmap -Pn --open -T3 -sT -sU -p T:1-65535,U:67,68,69,111,123,161,500,53,623,5353,1813,4500,177,5060,5269 \
         --script=version -sV --version-all -O \
@@ -1315,6 +1404,7 @@ function nmapScan()
         -oX "$RECONDIR"/${TARGET}.xml \
         $TARGET >/dev/null 2>&1
 
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1327,10 +1417,11 @@ function basicEyeWitness()
         echo "FAILED: no nmap xml file"
         return 1
     fi
-    screen -dmS ${TARGET}.ew.$RANDOM timeout --kill-after=10 --foreground 172800 \
+    screen -dmS ${TARGET}.ew.$RANDOM timeout --kill-after=10 --foreground 3600 \
         eyewitness --threads 2 -d "$RECONDIR"/${TARGET}.basicEyeWitness \
         --user-agent "$USERAGENT" --max-retries 10 --timeout 20 \
         --no-dns --no-prompt --all-protocols -x "$RECONDIR"/${TARGET}.xml
+
     return 0
 }
 ################################################################################
@@ -1338,12 +1429,15 @@ function basicEyeWitness()
 ################################################################################
 function routersploitScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port
     local module
     local ssl
     local url
     local cmdfile
     local service
+    local startepoch=$(date +%s)
 
     for port in ${FTPPORTS[@]}
     do
@@ -1479,6 +1573,8 @@ function routersploitScan()
         wait -n $(jobs 2>&1|grep routersploit |cut -d'[' -f2|cut -d']' -f1|head -1)
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1486,7 +1582,10 @@ function routersploitScan()
 ################################################################################
 function rshBrute()
 {
+    joblock ${FUNCNAME[0]}
+
     local login
+    local startepoch=$(date +%s)
 
     for login in $(cat "$RECONDIR"/tmp/users.lst)
     do
@@ -1494,6 +1593,8 @@ function rshBrute()
             >>"$RECONDIR"/${TARGET}.rsh 
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1501,8 +1602,11 @@ function rshBrute()
 ################################################################################
 function kafkaScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local topic
+    local startepoch=$(date +%s)
 
     timeout --kill-after=10 --foreground 300 \
         kafkacat -b $TARGET:$port -L \
@@ -1521,6 +1625,8 @@ function kafkaScan()
         fi
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1528,8 +1634,11 @@ function kafkaScan()
 ################################################################################
 function nfsScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local output
     local i
+    local startepoch=$(date +%s)
 
     ( timeout --kill-after=10 --foreground 300 \
         showmount -e ${TARGET} >"$RECONDIR"/${TARGET}.showmount-e 2>&1 \
@@ -1550,6 +1659,8 @@ function nfsScan()
         fi
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1557,6 +1668,8 @@ function nfsScan()
 ################################################################################
 function dnsScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local domain
     local arpa
     local subnet=()
@@ -1564,6 +1677,7 @@ function dnsScan()
     local b
     local file
     local tmp={}
+    local startepoch=$(date +%s)
 
     domain=$(host $IP $IP |grep 'domain name pointer' \
         |tail -1 |sed -e 's/.*domain name pointer \(.*\)./\1/'  |sed -e 's/\.$//')
@@ -1697,6 +1811,8 @@ function dnsScan()
 
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1704,7 +1820,10 @@ function dnsScan()
 ################################################################################
 function ikeScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
+    local startepoch=$(date +%s)
 
     timeout --kill-after=10 --foreground 900 \
         ike-scan -M -d $port $TARGET >>"$RECONDIR"/${TARGET}.${port}.ike-scan 2>&1 
@@ -1720,6 +1839,8 @@ function ikeScan()
             >>"$RECONDIR"/${TARGET}.${port}.ike-scan.key.crack 2>&1
     fi
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1727,8 +1848,11 @@ function ikeScan()
 ################################################################################
 function rsyncScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local share
+    local startepoch=$(date +%s)
 
     timeout --kill-after=10 --foreground 300 \
         rsync --list-only --port=$port rsync://$TARGET \
@@ -1745,6 +1869,8 @@ function rsyncScan()
         done
     fi
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1752,8 +1878,11 @@ function rsyncScan()
 ################################################################################
 function smbScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local share
     local cmd
+    local startepoch=$(date +%s)
 
     smbclient -g -N -L $TARGET >"$RECONDIR"/${TARGET}.smbshares 2>&1
     for share in $(egrep '^Disk' "$RECONDIR"/${TARGET}.smbshares |cut -d'|' -f2)
@@ -1784,6 +1913,8 @@ function smbScan()
         echo "" >>"$RECONDIR"/${TARGET}.rpcclient
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1791,8 +1922,11 @@ function smbScan()
 ################################################################################
 function mysqlScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local db
+    local startepoch=$(date +%s)
 
     echo "show databases" >> "$RECONDIR"/${TARGET}.$port.mysql
     timeout --kill-after=10 --foreground 300 \
@@ -1821,6 +1955,8 @@ function mysqlScan()
         mysql -E -u root -e 'select host,user,password from mysql.user;' --connect-timeout=90 -h $TARGET \
         >> "$RECONDIR"/${TARGET}.$port.mysql 2>&1
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1828,10 +1964,13 @@ function mysqlScan()
 ################################################################################
 function oracleScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local sid
     local file
     local alias
+    local startepoch=$(date +%s)
 
     timeout --kill-after=10 --foreground 90 \
         tnscmd10g -h ${TARGET} -p $port >"$RECONDIR"/${TARGET}.$port.oracle.tnscmd10g 2>&1
@@ -1859,6 +1998,8 @@ function oracleScan()
     #        $TARGET 
     #done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1869,6 +2010,7 @@ function passHydra()
     local port=$1
     local service=$2
     local file
+    local startepoch=$(date +%s)
     shift
     shift
 
@@ -1877,8 +2019,8 @@ function passHydra()
         if [[ -f "$file" ]]
         then
             timeout --kill-after=10 --foreground 86400 \
-                /usr/bin/time -v \
                 hydra.mkrecon -I -P $file -u -t 1 -s $port $TARGET $service \
+                2>&1 \
                 |strings -a \
                 >> "$RECONDIR"/${TARGET}.$port.$service.hydra 2>&1
         else
@@ -1891,6 +2033,7 @@ function passHydra()
 #        rm -f "$RECONDIR"/${TARGET}.$port.$service.hydra 2>/dev/null
 #    fi       
 
+    printexitstats "${FUNCNAME[0]} $port $service" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1900,9 +2043,9 @@ function doHydra()
 {
     local port=$1
     local service=$2
+    local startepoch=$(date +%s)
 
     timeout --kill-after=10 --foreground 172800 \
-        /usr/bin/time -v \
         hydra.mkrecon -I -C "$RECONDIR"/tmp/userpass.lst -u -t 2 -s $port $TARGET $service \
         2>&1 \
         |strings -a \
@@ -1913,6 +2056,7 @@ function doHydra()
 #        rm -f "$RECONDIR"/${TARGET}.$port.$service.hydra 2>/dev/null
 #    fi       
 
+    printexitstats "${FUNCNAME[0]} $port $service" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1920,8 +2064,11 @@ function doHydra()
 ################################################################################
 function postgresqlScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local db
+    local startepoch=$(date +%s)
 
     # set password var.  It will only be used if postgres asks for it.
     export PGPASSWORD=postgres
@@ -1950,6 +2097,8 @@ function postgresqlScan()
         psql -w -h $TARGET -p $port -U postgres -x -c 'select * from pg_catalog.pg_shadow;' \
         >> "$RECONDIR"/${TARGET}.$port.postgresql 2>&1
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -1957,9 +2106,12 @@ function postgresqlScan()
 ################################################################################
 function dockerScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local proto=$2
     local id
+    local startepoch=$(date +%s)
 
     timeout --kill-after=10 --foreground 300 \
         curl -A "$USERAGENT" --retry 20 --retry-connrefused -k -s ${proto}://${TARGET}:$port/info \
@@ -2006,6 +2158,8 @@ function dockerScan()
             |jq -M . \
             >> "$RECONDIR"/${TARGET}.$port.dockerepo 2>&1
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2013,12 +2167,17 @@ function dockerScan()
 ################################################################################
 function iscsiScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
+    local startepoch=$(date +%s)
 
     timeout --kill-after=10 --foreground 900 \
         iscsiadm -m discovery -t st -p ${TARGET}:${port} \
         >> "$RECONDIR"/${TARGET}.$port.iscsiadm 2>&1
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2026,10 +2185,13 @@ function iscsiScan()
 ################################################################################
 function elasticsearchScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local proto=$2
     local index
     local indexes=()
+    local startepoch=$(date +%s)
 
     timeout --kill-after=10 --foreground 300 \
         curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
@@ -2073,6 +2235,8 @@ function elasticsearchScan()
         done
     fi
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2080,8 +2244,11 @@ function elasticsearchScan()
 ################################################################################
 function redisScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local db
+    local startepoch=$(date +%s)
 
     echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.redis
     echo "Querying info for  database $db" >> "$RECONDIR"/${TARGET}.$port.redis
@@ -2116,6 +2283,8 @@ function redisScan()
         redis-cli -h $TARGET -p $port \
         >> "$RECONDIR"/${TARGET}.$port.redis.monitor 2>&1
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2123,8 +2292,11 @@ function redisScan()
 ################################################################################
 function ldapScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local context
+    local startepoch=$(date +%s)
 
     timeout --kill-after=10 --foreground 300 \
         ldapsearch -h $TARGET -p $port -x -s base \
@@ -2137,7 +2309,8 @@ function ldapScan()
             >> "$RECONDIR"/${TARGET}.$port.ldap.${context} 2>&1
     done
 
-
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2145,7 +2318,10 @@ function ldapScan()
 ################################################################################
 function clusterdScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port
+    local startepoch=$(date +%s)
 
     for port in ${HTTPPORTS[@]} ${HTTPSPORTS[@]}
     do
@@ -2159,12 +2335,16 @@ function clusterdScan()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.clusterd
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 
 ################################################################################
 function webDiscover()
 {
+    joblock ${FUNCNAME[0]}
+
     local a_dirbfiles=()
     local a_robots=()
     local a_urls=()
@@ -2179,6 +2359,7 @@ function webDiscover()
     local webwordsfile="$RECONDIR/tmp/webwordsfile"
     local wordlist
     local urlfile
+    local startepoch=$(date +%s)
 
     IFS=$'\n'
     # Build dirb dictionary array
@@ -2256,8 +2437,8 @@ function webDiscover()
     # second run through baseurls.  dirb may take hours
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
-        timeout --kill-after=10 --foreground 14400 \
-            dirb "$url" "$webwordsfile" -a "$USERAGENT" -w -f -S \
+        timeout --kill-after=10 --foreground 3600 \
+            dirb "$url" "$webwordsfile" -a "$USERAGENT" -w -r -f -S \
             >> "$dirboutraw" 2>&1
     done
 
@@ -2370,14 +2551,16 @@ function webDiscover()
     do
         if ! egrep -q "^$url$" "$RECONDIR"/${TARGET}.urls.401 >/dev/null 2>&1 \
         && timeout --kill-after=10 --foreground 900 \
-            wget -U "$USERAGENT" --tries=20 --retry-connrefused -q -O /dev/null --no-check-certificate -S \
-                -D $TARGET --method=HEAD "$url" 2>&1 \
+            wget -U "$USERAGENT" --tries=20 --retry-connrefused -q -O /dev/null \
+                --no-check-certificate -S -D $TARGET --method=HEAD "$url" 2>&1 \
                 |grep -q '401 Unauthorized' >/dev/null 2>&1
         then
             echo "$url" >> "$RECONDIR"/${TARGET}.urls.401
         fi
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2385,9 +2568,12 @@ function webDiscover()
 ################################################################################
 function zapScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
     local port
     local epoch=$(date +"%s")
+    local startepoch=$(date +%s)
 
     if ! which zap-cli >/dev/null 2>&1
     then
@@ -2405,6 +2591,7 @@ function zapScan()
         then
             echo "Starting zap proxy on port $port in screen session"
             screen -dmS ${TARGET}.zap${port} /usr/share/zaproxy/zap.sh -daemon -newsession "$RECONDIR"/tmp/zapsession -host localhost -port $port -config api.key=notMyPassword
+            # ZAP takes a while to load
             sleep 180
             break
         fi
@@ -2433,6 +2620,8 @@ function zapScan()
 
     screen -ls ${TARGET}.zap${port} |grep ${TARGET}.zap${port} |awk '{print $1}'|cut -d'.' -f1 |xargs kill
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2440,7 +2629,10 @@ function zapScan()
 ################################################################################
 function niktoScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
+    local startepoch=$(date +%s)
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
@@ -2451,6 +2643,8 @@ function niktoScan()
             nikto -no404 -nointeractive -useragent "$USERAGENT" -host "$url" >>"$RECONDIR"/${TARGET}.nikto 2>&1
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2458,18 +2652,23 @@ function niktoScan()
 ################################################################################
 function getHeaders()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
+    local startepoch=$(date +%s)
 
     for url in $(cat "$RECONDIR"/${TARGET}.urls)
     do 
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.headers
         echo "$url" >> "$RECONDIR"/${TARGET}.headers
         timeout --kill-after=10 --foreground 900 \
-            wget -U "$USERAGENT" --tries=20 --retry-connrefused -q -O /dev/null --no-check-certificate -S \
-                -D $TARGET --method=OPTIONS "$url" \
-                >> "$RECONDIR"/${TARGET}.headers 2>&1
+            wget -U "$USERAGENT" --tries=20 --retry-connrefused -q -O /dev/null \
+            --no-check-certificate -S -D $TARGET --method=OPTIONS "$url" \
+            >> "$RECONDIR"/${TARGET}.headers 2>&1
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2477,6 +2676,8 @@ function getHeaders()
 ################################################################################
 function skipfishScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
     local a_urls=()
 
@@ -2486,6 +2687,8 @@ function skipfishScan()
     done
     screen -dmS ${TARGET}.skipfish.$RANDOM \
         skipfish -k 48:00:00 -g1 -f100 -o "$RECONDIR"/${TARGET}.skipfish ${a_urls[*]}
+
+    jobunlock ${FUNCNAME[0]}
     return 0
 }
 ################################################################################
@@ -2493,12 +2696,15 @@ function skipfishScan()
 ################################################################################
 function hydraScanURLs()
 {
+    joblock ${FUNCNAME[0]}
+
     local path
     local hydrafile
     local sslflag
     local url
     local port
     local commonurl
+    local startepoch=$(date +%s)
 
     # Try to find commonality and just attack the top of the list
     # This will avoid attacking the same type of service on multiple urls
@@ -2522,7 +2728,6 @@ function hydraScanURLs()
             echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
             echo "TESTING $url with userpass.lst"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
             timeout --kill-after=10 --foreground 86400 \
-                /usr/bin/time -v \
                 hydra.mkrecon -I -C "$RECONDIR"/tmp/userpass.lst \
                 -u -t 2 $sslflag -s $port $TARGET http-get "$path" \
                 >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
@@ -2531,7 +2736,6 @@ function hydraScanURLs()
             echo "$BORDER"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
             echo "TESTING $url with users.lst and passwds.lst"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
             timeout --kill-after=10 --foreground 86400 \
-                /usr/bin/time -v \
                 hydra.mkrecon -I -L "$RECONDIR"/tmp/users.lst -P "$RECONDIR"/tmp/passwds.lst \
                 -e nsr -u -t 5 $sslflag -s $port $TARGET http-get "$path" \
                 >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
@@ -2549,6 +2753,8 @@ function hydraScanURLs()
         wait -n $(jobs 2>&1|grep hydra |grep http-get |cut -d'[' -f2|cut -d']' -f1|head -1)
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2556,14 +2762,16 @@ function hydraScanURLs()
 ################################################################################
 function sqlmapScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
+    local startepoch=$(date +%s)
 
     for url in $(awk '/^URL: / {print $2}' "$RECONDIR"/${TARGET}.mech-dump 2>/dev/null |sort -u)
     do
         echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw
         echo "# TESTING $url" >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw
         timeout --kill-after=10 --foreground 1800 \
-            /usr/bin/time -v \
             sqlmap --forms --random-agent --batch --flush-session -o --threads=2 -a --technique=BEUSQ -u "$url" 2>&1 \
             |tail -n +7 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
@@ -2578,6 +2786,8 @@ function sqlmapScan()
             |uniq > "$RECONDIR"/${TARGET}.sqlmap 2>&1
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2585,7 +2795,11 @@ function sqlmapScan()
 ################################################################################
 function webWords()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
+    local startepoch=$(date +%s)
+
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
         # collect words from websites
@@ -2610,6 +2824,8 @@ function webWords()
         sort -u "$RECONDIR"/tmp/${TARGET}.webwords > "$RECONDIR"/${TARGET}.webwords 2>/dev/null
     fi
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2617,8 +2833,11 @@ function webWords()
 ################################################################################
 function cewlCrawl()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
     local urlfile
+    local startepoch=$(date +%s)
 
     mkdir -p "$RECONDIR"/tmp/cewl >/dev/null 2>&1
     for url in $(cat "$RECONDIR"/${TARGET}.spider 2>/dev/null )
@@ -2635,6 +2854,8 @@ function cewlCrawl()
     cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlemail 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.cewlemail
     cat "$RECONDIR"/tmp/cewl/${TARGET}.*.cewlmeta 2>/dev/null |sort -u > "$RECONDIR"/${TARGET}.cewlmeta
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2642,6 +2863,8 @@ function cewlCrawl()
 ################################################################################
 function wfuzzURLs()
 {
+    joblock ${FUNCNAME[0]}
+
     local a_vars=()
     local file
     local filename
@@ -2660,6 +2883,7 @@ function wfuzzURLs()
     local varstring
     local varuser
     local wfuzzfile
+    local startepoch=$(date +%s)
 
     mkdir -p "$RECONDIR"/${TARGET}.wfuzz/raws >/dev/null 2>&1
 
@@ -2881,6 +3105,8 @@ function wfuzzURLs()
             || rm -f "$RECONDIR"/${TARGET}.wfuzz/${filename%%.wfuzz.*.html}.wfuzz.html
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2888,8 +3114,11 @@ function wfuzzURLs()
 ################################################################################
 function mechDumpURLs()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
     local output
+    local startepoch=$(date +%s)
 
     for url in $(cat "$RECONDIR"/${TARGET}.urls \
         |egrep -v '/./$|/../$' \
@@ -2906,6 +3135,8 @@ function mechDumpURLs()
         fi
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 
@@ -2914,9 +3145,12 @@ function mechDumpURLs()
 ################################################################################
 function davScanURLs()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
     local port
     local output
+    local startepoch=$(date +%s)
 
     for url in $(cat "$RECONDIR"/${TARGET}.urls 2>/dev/null \
         |sed -e 's|\(^.*://.*/\).*|\1|'\
@@ -2956,6 +3190,8 @@ function davScanURLs()
     grep -q succeeded "$RECONDIR"/${TARGET}.cadaver 2>/dev/null \
         || rm -f "$RECONDIR"/${TARGET}.cadaver >/dev/null 2>&1
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -2963,10 +3199,13 @@ function davScanURLs()
 ################################################################################
 function exifScanURLs()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
     local port
     local output
     local exifreport="$RECONDIR"/${TARGET}.exif.html
+    local startepoch=$(date +%s)
 
     for url in $(cat "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null \
         |egrep -i '\.(jpg|jpeg|tif|tiff|wav)$')
@@ -2989,6 +3228,8 @@ function exifScanURLs()
         rm -f /tmp/${TARGET}.exiftestfile >/dev/null 2>&1 
     done 
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3017,7 +3258,10 @@ function getPortFromUrl()
 ################################################################################
 function wigScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
+    local startepoch=$(date +%s)
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null)
     do
@@ -3031,6 +3275,8 @@ function wigScan()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wig 
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3038,8 +3284,11 @@ function wigScan()
 ################################################################################
 function scanURLs()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
     local cms
+    local startepoch=$(date +%s)
 
     screen -dmS ${TARGET}.urlsew.$RANDOM timeout --kill-after=10 --foreground 172800 \
         eyewitness --user-agent "$USERAGENT" --threads 2 -d "$RECONDIR"/${TARGET}.urlsEyeWitness \
@@ -3090,7 +3339,6 @@ function scanURLs()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
         timeout --kill-after=10 --foreground 1800 \
-            /usr/bin/time -v \
             wpscan -a "$USERAGENT" -r -t3 --follow-redirection --disable-tls-checks -e \
             --no-banner --no-color --batch --url "$url" \
             |strings -a \
@@ -3100,7 +3348,6 @@ function scanURLs()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan
         echo "CRACKING ADMIN FOR URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
         timeout --kill-after=10 --foreground 1800 \
-            /usr/bin/time -v \
             wpscan -a "$USERAGENT" -r -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
             --username admin --url "$url" \
             |strings -a \
@@ -3115,13 +3362,14 @@ function scanURLs()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.joomscan
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.joomscan
         timeout --kill-after=10 --foreground 1800 \
-            /usr/bin/time -v \
             joomscan -ec -r -a "$USERAGENT" -u "$url" \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.joomscan 2>&1 
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3129,7 +3377,10 @@ function scanURLs()
 ################################################################################
 function fimapScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
+    local startepoch=$(date +%s)
 
     # run fimap on anything with php
     #for url in $(egrep -i '\.php$' "$RECONDIR"/${TARGET}.urls |awk '{print $1}')
@@ -3145,6 +3396,8 @@ function fimapScan()
             >> "$RECONDIR"/${TARGET}.fimap
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3152,9 +3405,12 @@ function fimapScan()
 ################################################################################
 function mesosScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local cmd
     local output
+    local startepoch=$(date +%s)
 
     for cmd in version env trace health status info flags features dump system/stats metrics/snapshot
     do
@@ -3170,6 +3426,8 @@ function mesosScan()
         fi
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3177,14 +3435,19 @@ function mesosScan()
 ################################################################################
 function zookeeperScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local cmd
+    local startepoch=$(date +%s)
 
     for cmd in envi stat req dump
     do
         echo $cmd |ncat ${TARGET} $port >"$RECONDIR"/${TARGET}.${port}.zookeeper.${cmd} 2>&1
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3192,8 +3455,11 @@ function zookeeperScan()
 ################################################################################
 function mongoCrack()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local dir
+    local startepoch=$(date +%s)
 
     for dir in /usr/lib/go-*
     do
@@ -3236,7 +3502,8 @@ function mongoCrack()
             >> "$RECONDIR"/${TARGET}.$port.mongo.mongocrhashes.cracked 2>&1
     fi
 
-
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3244,6 +3511,8 @@ function mongoCrack()
 ################################################################################
 function mongoScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port=$1
     local db
     local IFS=$'\n'
@@ -3253,7 +3522,7 @@ function mongoScan()
     local salt
     local storedkey
     local hash
-
+    local startepoch=$(date +%s)
 
     echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.mongo
     echo "# use admin; db.system.users.find()" >> "$RECONDIR"/${TARGET}.$port.mongo
@@ -3335,6 +3604,8 @@ function mongoScan()
         mongoCrack $port
     fi
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3342,8 +3613,11 @@ function mongoScan()
 ################################################################################
 function memcacheScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local cmdfile="$RECONDIR"/tmp/memcached.${port}.metasploit
     local port=$1
+    local startepoch=$(date +%s)
 
     echo "color false" > $cmdfile
     echo "use auxiliary/gather/memcached_extractor" >> $cmdfile
@@ -3366,6 +3640,8 @@ function memcacheScan()
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^UserAgent |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.$port.memcached.msf
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3373,7 +3649,10 @@ function memcacheScan()
 ################################################################################
 function ipmiScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local cmdfile="$RECONDIR"/tmp/ipmi.metasploit
+    local startepoch=$(date +%s)
 
     echo "color false" > $cmdfile
     echo "use auxiliary/scanner/ipmi/ipmi_dumphashes" >> $cmdfile
@@ -3398,6 +3677,8 @@ function ipmiScan()
         john --show $RECONDIR/${TARGET}.ipmi.john >$RECONDIR/${TARGET}.ipmi.john.cracked 2>&1
     fi
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3405,9 +3686,12 @@ function ipmiScan()
 ################################################################################
 function msfRMIScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local port
     local cmdfile="$RECONDIR/tmp/rmiscanscript"
     local msfscan
+    local startepoch=$(date +%s)
 
     echo "color false" > $cmdfile
     for msfscan in auxiliary/gather/java_rmi_registry auxiliary/scanner/misc/java_rmi_server
@@ -3436,6 +3720,8 @@ function msfRMIScan()
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^UserAgent |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.rmi.msf
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3443,12 +3729,15 @@ function msfRMIScan()
 ################################################################################
 function msfHttpScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local httpscans=()
     local msfscan
     local port
     local url
     local ssl
     local cmdfile="$RECONDIR/tmp/msfHttpScanScript"
+    local startepoch=$(date +%s)
 
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/http/; exit' \
@@ -3497,6 +3786,8 @@ function msfHttpScan()
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^UserAgent |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.http.msf
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3504,10 +3795,13 @@ function msfHttpScan()
 ################################################################################
 function msfHPScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local hpcans=()
     local msfscan
     local port
     local cmdfile="$RECONDIR/tmp/msfHPScanScript"
+    local startepoch=$(date +%s)
 
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/http/; exit' \
@@ -3559,6 +3853,8 @@ function msfHPScan()
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^UserAgent |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.hp.msf
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3566,10 +3862,13 @@ function msfHPScan()
 ################################################################################
 function msfSapScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local sapscans=()
     local msfscan
     local port
     local cmdfile="$RECONDIR/tmp/msfSapScanScript"
+    local startepoch=$(date +%s)
 
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/sap/; exit' \
@@ -3621,6 +3920,8 @@ function msfSapScan()
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^UserAgent |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.sap.msf
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3628,8 +3929,11 @@ function msfSapScan()
 ################################################################################
 function msfJuniperScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local msfscan
     local cmdfile="$RECONDIR"/tmp/juniper.msf
+    local startepoch=$(date +%s)
 
     echo "color false" > $cmdfile
     echo "use auxiliary/scanner/ssh/juniper_backdoor" >> "$cmdfile"
@@ -3644,6 +3948,8 @@ function msfJuniperScan()
         /usr/share/metasploit-framework/msfconsole -q -n -r $cmdfile -o "$RECONDIR"/${TARGET}.juniper.msf \
         >/dev/null 2>&1
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3651,8 +3957,11 @@ function msfJuniperScan()
 ################################################################################
 function msfCiscoScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local msfscan
     local cmdfile="$RECONDIR"/tmp/cisco.msf
+    local startepoch=$(date +%s)
 
     echo "color false" > $cmdfile
 
@@ -3696,6 +4005,8 @@ function msfCiscoScan()
         |egrep -v '^resource \(|\[\*\] exec:|Did you mean RHOST|^THREADS|^VERBOSE|^RPORT|^RHOST|^SSL |^UserAgent |^\[\*\].* module execution completed|^\[\*\] Scanned 1 of 1 hosts' \
         > "$RECONDIR"/${TARGET}.cisco.msf
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3703,8 +4014,11 @@ function msfCiscoScan()
 ################################################################################
 function WAScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
     local scan
+    local startepoch=$(date +%s)
 
     if [[ ! -d /tmp/WAScan ]]
     then
@@ -3727,7 +4041,6 @@ function WAScan()
         echo "$BORDER"  >> "$RECONDIR"/${TARGET}.${port}.WAScan
         echo "TESTING $url"  >> "$RECONDIR"/${TARGET}.${port}.WAScan
         timeout --kill-after=10 --foreground 14400 \
-            /usr/bin/time -v \
             /tmp/WAScan/wascan.py -A "$USERAGENT" -n -r --url "$url" 2>&1 \
             |tail -n +11 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
@@ -3736,6 +4049,8 @@ function WAScan()
             >> "$RECONDIR"/${TARGET}.${port}.WAScan 
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3743,10 +4058,13 @@ function WAScan()
 ################################################################################
 function badKeyScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local yml
     local key
     local user
     local port
+    local startepoch=$(date +%s)
 
     if [[ ! -d /tmp/ssh-badkeys/authorized ]]
     then
@@ -3773,6 +4091,8 @@ function badKeyScan()
         fi
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3780,15 +4100,19 @@ function badKeyScan()
 ################################################################################
 function crackers()
 {
+    local startepoch=$(date +%s)
+
+    # brutespray uses service-specific wordlists in /usr/share/brutespray/wordlist
+    timeout --kill-after=10 --foreground 172800 \
+        brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c -o "$RECONDIR"/${TARGET}.brutespray \
+        >/dev/null 2>&1
+
     screen -dmS ${TARGET}.ncrack.$RANDOM -L -Logfile "$RECONDIR"/${TARGET}.ncrack \
         timeout --kill-after=10 --foreground 172800 \
         ncrack -iN "$RECONDIR"/${TARGET}.nmap -U "$RECONDIR"/tmp/users.lst \
         -P "$RECONDIR"/tmp/passwds.lst -v -g CL=2,cr=5,to=47h
 
-    # brutespray uses service-specific wordlists in /usr/share/brutespray/wordlist
-    timeout --kill-after=10 --foreground 172800 \
-        brutespray --file "$RECONDIR"/${TARGET}.ngrep --threads 2 -c -o "$RECONDIR"/${TARGET}.brutespray >/dev/null 2>&1
-
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3796,7 +4120,10 @@ function crackers()
 ################################################################################
 function wafw00fScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
+    local startepoch=$(date +%s)
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
@@ -3806,6 +4133,8 @@ function wafw00fScan()
             wafw00f "$url" >> "$RECONDIR"/${TARGET}.wafw00f 2>&1
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3813,17 +4142,27 @@ function wafw00fScan()
 ################################################################################
 function wapitiScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
     local port
+    local startepoch=$(date +%s)
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
         port=${url##*:}
-        timeout --kill-after 10 --foreground 14400 \
-            wapiti "$url" -o "$RECONDIR"/${TARGET}.${port}.wapiti -f html \
-            > "$RECONDIR"/tmp/wapiti.${port}.out 2>&1
+        timeout --kill-after 10 --foreground 28800 \
+            wapiti "$url" -o "$RECONDIR"/${TARGET}.${port}.wapiti -f html --verify-ssl 0 \
+            > "$RECONDIR"/tmp/wapiti.${port}.out 2>&1 &
     done
 
+    while jobs 2>&1|grep -q 'wapiti'
+    do
+        wait -n $(jobs 2>&1|grep wapiti |cut -d'[' -f2|cut -d']' -f1|head -1)
+    done
+
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3831,11 +4170,14 @@ function wapitiScan()
 ################################################################################
 function arachniScan()
 {
+    joblock ${FUNCNAME[0]}
+
     local url
     local count=0
     local i=0
     local file
     local report
+    local startepoch=$(date +%s)
 
     mkdir -p "$RECONDIR"/${TARGET}-arachni >/dev/null 2>&1
     mkdir -p "$RECONDIR"/tmp/arachni >/dev/null 2>&1
@@ -3846,7 +4188,7 @@ function arachniScan()
         timeout --kill-after 10 --foreground 172800 \
             arachni --http-user-agent "$USERAGENT" --audit-links --audit-forms --audit-ui-forms \
             --audit-ui-inputs --audit-xmls --audit-jsons --timeout=47:30:0 --output-only-positives \
-            --http-request-concurrency=1 --report-save-path="$RECONDIR"/tmp/arachni $url \
+            --http-request-concurrency=2 --report-save-path="$RECONDIR"/tmp/arachni $url \
             >"$RECONDIR"/tmp/arachni.$count.out 2>&1 &
     done
 
@@ -3866,6 +4208,8 @@ function arachniScan()
         rm -f /usr/share/arachni/bin/"$report" >/dev/null 2>&1
     done
 
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3894,6 +4238,7 @@ function domainNameScan()
 {
     local domain
     local record
+    local startepoch=$(date +%s)
 
     if [[ ${TARGET} =~ [a-zA-Z] ]]
     then
@@ -4018,7 +4363,31 @@ function domainNameScan()
         fi
     done
 
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
+}
+################################################################################
+
+################################################################################
+function printexitstats()
+{
+    local function=$1
+    local startepoch=$2
+    local endepoch
+    local runtime
+    local runhour
+    local runmin
+    local runsec
+
+    endepoch=$(date +%s)
+    runtime=$(( endepoch - startepoch ))
+    runhour=$(( runtime / 3600 ))
+    runmin=0$(( ( runtime - ( runhour * 3600 )) / 60 ))
+    runmin=${runmin:$((${#runmin}-2)):${#runmin}}
+    runsec=0$(( ( runtime - ( runhour * 3600 )) % 60 ))
+    runsec=${runsec:$((${#runsec}-2)):${#runsec}}
+
+    echo "completed $function runtime=${runhour}:${runmin}:${runsec}"
 }
 ################################################################################
 
@@ -4029,6 +4398,7 @@ function defaultCreds()
     local name
     local defpassfile='/usr/share/seclists/Passwords/Default-Credentials/default-passwords.csv'
     local logfile="$RECONDIR"/${TARGET}.defaultCreds
+    local startepoch=$(date +%s)
 
     for name in $(cat $defpassfile \
         |dos2unix -f |cut -d',' -f1 |tr '[A-Z]' '[a-z]' |sed -e 's/"//g' |sort -u)
@@ -4048,6 +4418,7 @@ function defaultCreds()
         fi
     done
 
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
 ################################################################################
@@ -4060,8 +4431,10 @@ export PERL_LWP_SSL_VERIFY_HOSTNAME=0
 shopt -s nocasematch
 renice 5 $$ >/dev/null 2>&1
 
+mainstartepoch=$(date +%s)
 MAIN $*
 stty sane >/dev/null 2>&1
+printexitstats "mkrecon" "$mainstartepoch"
 
 set > /tmp/set2
 

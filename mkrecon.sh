@@ -817,7 +817,7 @@ function joblock()
         jobscount=$(cat "$JOBSFILE" 2>/dev/null |wc -l)
         if [[ $jobscount -ge $JOBSLIMIT ]]
         then
-            unset 'joblist[@]'
+            unset 'joblist[@]' >/dev/null 2>&1
             for job in $(cat "$JOBSFILE")
             do
                 joblist[${#joblist[@]}]=$job

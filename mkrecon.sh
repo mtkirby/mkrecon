@@ -860,8 +860,8 @@ function pingPause()
     # Run up to 3 pings to check if target is still alive
     # PINGCHECK was set in buildEnv and will be 0 if target is not pingable
     if [[ $PINGCHECK == 1 ]] \
-    && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1
-    && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1
+    && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1 \
+    && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1 \
     && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1
     then
         echo "UNABLE TO PING $TARGET.  PAUSING JOBS"
@@ -899,17 +899,20 @@ function joblock()
     local joblist
     local job
 
-
-    # many jobs may kick off simultaneously, so sleep a bit first
-    sleep $(( ( RANDOM * RANDOM + 1 ) % 30 + 3 ))
-
     while true
     do
+        # Need multiple random sleeps in case jobs are unpaused all at once.
+        sleep $(( ( RANDOM * RANDOM + 1 ) % 15 + 5 ))
+        sleep $(( ( RANDOM * RANDOM + 1 ) % 15 + 5 ))
+        sleep $(( ( RANDOM * RANDOM + 1 ) % 15 + 5 ))
+        sleep $(( ( RANDOM * RANDOM + 1 ) % 15 + 5 ))
+
         if [[ -f "$JOBSLIMITFILE" ]]
         then
             JOBSLIMIT=$(head -1 "$JOBSLIMITFILE")
         fi
         jobscount=$(cat "$JOBSFILE" 2>/dev/null |wc -l)
+
         if [[ $jobscount -ge $JOBSLIMIT ]]
         then
             unset 'joblist[@]' >/dev/null 2>&1
@@ -919,11 +922,23 @@ function joblock()
             done
             echo "joblock: $function is waiting for other jobs to finish. Limit $JOBSLIMIT"
             echo "    Running Jobs: ${joblist[@]}"
-            sleep $(( ( RANDOM * RANDOM + 1 ) % 120 + 180 ))
+            sleep $(( ( RANDOM * RANDOM + 1 ) % 120 + 120 ))
+            continue
         else
-            echo $function >> "$JOBSFILE"
-            echo "joblock: allowing $function to run"
-            return 0
+            # avoid race condition
+            # This can be a problem if jobs are paused/unpaused while in a sleep
+            if [[ ! -f "$JOBLOCKFILE" ]]
+            then
+                touch "$JOBLOCKFILE"
+                echo $function >> "$JOBSFILE"
+                echo "joblock: allowing $function to run"
+                rm -f "$JOBLOCKFILE" >/dev/null 2>&1
+                return 0
+            else
+                echo "joblock collision: lockfile found. Waiting our turn."
+                sleep $(( ( RANDOM * RANDOM + 1 ) % 20 + 5 ))
+                continue
+            fi
         fi
     done
 
@@ -968,6 +983,7 @@ function buildEnv()
     JOBSLIMIT=3
     JOBSLIMITFILE="/tmp/mkrecon.${TARGET}.jobslimit"
     JOBSPAUSEFILE="/tmp/mkrecon.${TARGET}.pause"
+    JOBLOCKFILE="/tmp/mkrecon.${TARGET}.lock"
     JOBSPAUSE=0
     MAXWAIT=10080
 

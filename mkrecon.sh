@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180910
+# version 20180911
 
 umask 077
 
@@ -15,7 +15,7 @@ function MAIN()
     local FTPPORTS=()
     local hpflag=0
     local job
-    local jobscount
+    local waitcount
     local juniperflag=0
     local line
     local HTTPPORTS=()
@@ -61,6 +61,7 @@ function MAIN()
     echo "# Some tasks are backgrounded, depending on network impact."
     echo "# jobs limit is set to $JOBSLIMIT"
     echo "# If you want to increase the number of active jobs, edit $JOBSLIMITFILE"
+    echo "# To pause jobs, touch $JOBSPAUSEFILE"
     echo "$BORDER"
     
     echo "starting snmpScan"
@@ -575,6 +576,144 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.nmap-ipmi-brute"
     otherNmaps &
 
+    ################################################################################
+    # Run these functions first.  There are dependencies on these.
+
+    if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
+    then
+        #echo "starting webWords"
+        #echo "... outputs $RECONDIR/${TARGET}.webwords"
+        #webWords 
+
+        echo "starting webDiscover.  This may take several hours per web service."
+        echo "... outputs $RECONDIR/${TARGET}.robots.txt"
+        echo "... outputs $RECONDIR/${TARGET}.robotspider.html"
+        echo "... outputs $RECONDIR/${TARGET}.dirburls"
+        echo "... outputs $RECONDIR/${TARGET}.urls.401"
+        echo "... outputs $RECONDIR/${TARGET}.spider"
+        echo "... outputs $RECONDIR/${TARGET}.spider.html"
+        echo "... outputs $RECONDIR/${TARGET}.urls"
+        echo "... outputs $RECONDIR/${TARGET}.urls.html"
+        # do not background.  There are dependencies below.
+        webDiscover 
+    fi
+
+    if [[ -f "$RECONDIR"/${TARGET}.urls ]]
+    then
+        echo "starting mechDumpURLs"
+        echo "... outputs $RECONDIR/${TARGET}.mech-dump"
+        # do not background mech-dump.  There are dependencies in wfuzzURLs.
+        mechDumpURLs 
+    fi
+
+    ################################################################################
+
+    if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
+    then
+        echo "starting clusterdScan"
+        echo "... outputs $RECONDIR/${TARGET}.clusterd"
+        # do not background.  Limit number of simultaneous scans
+        clusterdScan &
+
+        echo "starting WAScan"
+        echo "... outputs $RECONDIR/${TARGET}.\$port.WAScan"
+        WAScan &
+
+        echo "starting msfHttpScan"
+        echo "... outputs $RECONDIR/${TARGET}.http.msf"
+        msfHttpScan &
+    
+        echo "starting routersploitScan"
+        echo "... outputs $RECONDIR/${TARGET}.routersploit"
+        routersploitScan &
+    
+        echo "starting skipfishScan"
+        echo "... outputs $RECONDIR/${TARGET}.skipfish/"
+        skipfishScan &
+
+        echo "starting wigScan"
+        echo "... outputs $RECONDIR/${TARGET}.wig"
+        wigScan &
+
+        echo "starting wafw00fScan"
+        echo "... outputs $RECONDIR/${TARGET}.wafw00f"
+        wafw00fScan &
+
+        echo "starting niktoScan"
+        echo "... outputs $RECONDIR/${TARGET}.nikto"
+        niktoScan &
+
+        echo "starting arachniScan"
+        echo "... outputs $RECONDIR/${TARGET}/arachni"
+        arachniScan &
+
+        echo "starting wapitiScan"
+        echo "... outputs $RECONDIR/${TARGET}.\$port.wapiti"
+        wapitiScan &
+    fi
+    
+    if [[ -f "$RECONDIR"/${TARGET}.urls ]]
+    then
+        if [[ -f "$RECONDIR"/${TARGET}.mech-dump ]]
+        then
+            echo "starting wfuzzURLs"
+            echo "... outputs $RECONDIR/${TARGET}.wfuzz/"
+            wfuzzURLs &
+        fi
+
+        echo "starting getHeaders"
+        echo "... outputs $RECONDIR/${TARGET}.headers"
+        getHeaders &
+
+        echo "starting davScanURLs"
+        echo "... outputs $RECONDIR/${TARGET}.davtest if anything found"
+        echo "... outputs $RECONDIR/${TARGET}.cadaver if anything found"
+        echo "... outputs $RECONDIR/${TARGET}.nmap-webdav if anything found"
+        davScanURLs &
+
+        echo "starting scanURLs"
+        echo "... outputs $RECONDIR/${TARGET}.whatweb"
+        echo "... outputs $RECONDIR/${TARGET}.wpscan if anything found"
+        echo "... outputs $RECONDIR/${TARGET}.joomscan if anything found"
+        scanURLs &
+
+        echo "starting fimapScan"
+        echo "... outputs $RECONDIR/${TARGET}.fimap if anything found"
+        fimapScan &
+
+        echo "starting zapScan"
+        echo "... outputs $RECONDIR/${TARGET}.zap.html"
+        # do not background.  Limit number of simultaneous scans
+        zapScan &
+    fi
+
+    if [[ -f "$RECONDIR"/${TARGET}.spider ]]
+    then
+        echo "starting sqlmapScan"
+        echo "... outputs $RECONDIR/${TARGET}.sqlmap"
+        sqlmapScan &
+
+        echo "starting cewlCrawl"
+        echo "... outputs $RECONDIR/${TARGET}.cewl"
+        echo "... outputs $RECONDIR/${TARGET}.cewlemail"
+        echo "... outputs $RECONDIR/${TARGET}.cewlmeta"
+        cewlCrawl &
+    fi
+    
+    if [[ -f "$RECONDIR"/${TARGET}.urls.401 ]]
+    then
+        echo "starting hydraScanURLs"
+        echo "... outputs $RECONDIR/${TARGET}.hydra/ if anything found"
+        hydraScanURLs &
+    fi
+
+    if [[ -f "$RECONDIR"/tmp/${TARGET}.spider.raw ]]
+    then
+        echo "starting exifScanURLs"
+        echo "... outputs $RECONDIR/${TARGET}.exif.html if anything found"
+        exifScanURLs &
+    fi
+    
     if [[ $sshflag == 1 ]]
     then
         echo "starting ssh badKeyScan"
@@ -619,145 +758,57 @@ function MAIN()
         msfJuniperScan &
     fi
 
-    if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
-    then
-        #echo "starting webWords"
-        #echo "... outputs $RECONDIR/${TARGET}.webwords"
-        #webWords 
+    ################################################################################    
 
-        echo "starting webDiscover.  This may take several hours per web service."
-        echo "... outputs $RECONDIR/${TARGET}.robots.txt"
-        echo "... outputs $RECONDIR/${TARGET}.robotspider.html"
-        echo "... outputs $RECONDIR/${TARGET}.dirburls"
-        echo "... outputs $RECONDIR/${TARGET}.urls.401"
-        echo "... outputs $RECONDIR/${TARGET}.spider"
-        echo "... outputs $RECONDIR/${TARGET}.spider.html"
-        echo "... outputs $RECONDIR/${TARGET}.urls"
-        echo "... outputs $RECONDIR/${TARGET}.urls.html"
-        # do not background.  There are dependencies below.
-        webDiscover 
-
-        echo "starting clusterdScan"
-        echo "... outputs $RECONDIR/${TARGET}.clusterd"
-        # do not background.  Limit number of simultaneous scans
-        clusterdScan &
-
-        echo "starting WAScan"
-        echo "... outputs $RECONDIR/${TARGET}.\$port.WAScan"
-        WAScan &
-
-        echo "starting msfHttpScan"
-        echo "... outputs $RECONDIR/${TARGET}.http.msf"
-        msfHttpScan &
-    
-        echo "starting routersploitScan"
-        echo "... outputs $RECONDIR/${TARGET}.routersploit"
-        routersploitScan &
-    
-        echo "starting skipfishScan"
-        echo "... outputs $RECONDIR/${TARGET}.skipfish/"
-        skipfishScan &
-
-        echo "starting wigScan"
-        echo "... outputs $RECONDIR/${TARGET}.wig"
-        wigScan &
-
-        echo "starting wafw00fScan"
-        echo "... outputs $RECONDIR/${TARGET}.wafw00f"
-        wafw00fScan &
-
-        echo "starting niktoScan"
-        echo "... outputs $RECONDIR/${TARGET}.nikto"
-        niktoScan &
-
-        echo "starting arachniScan"
-        echo "... outputs $RECONDIR/${TARGET}/arachni"
-        arachniScan &
-
-        echo "starting wapitiScan"
-        echo "... outputs $RECONDIR/${TARGET}.\$port.wapiti"
-        wapitiScan &
-    fi
-    
-    if [[ -f "$RECONDIR"/${TARGET}.spider ]]
-    then
-        echo "starting sqlmapScan"
-        echo "... outputs $RECONDIR/${TARGET}.sqlmap"
-        sqlmapScan &
-
-        echo "starting cewlCrawl"
-        echo "... outputs $RECONDIR/${TARGET}.cewl"
-        echo "... outputs $RECONDIR/${TARGET}.cewlemail"
-        echo "... outputs $RECONDIR/${TARGET}.cewlmeta"
-        cewlCrawl &
-    fi
-    
-    if [[ -f "$RECONDIR"/${TARGET}.urls.401 ]]
-    then
-        echo "starting hydraScanURLs"
-        echo "... outputs $RECONDIR/${TARGET}.hydra/ if anything found"
-        hydraScanURLs &
-    fi
-    
-    if [[ -f "$RECONDIR"/${TARGET}.urls ]]
-    then
-        echo "starting getHeaders"
-        echo "... outputs $RECONDIR/${TARGET}.headers"
-        getHeaders &
-
-        echo "starting davScanURLs"
-        echo "... outputs $RECONDIR/${TARGET}.davtest if anything found"
-        echo "... outputs $RECONDIR/${TARGET}.cadaver if anything found"
-        echo "... outputs $RECONDIR/${TARGET}.nmap-webdav if anything found"
-        davScanURLs &
-
-        echo "starting scanURLs"
-        echo "... outputs $RECONDIR/${TARGET}.whatweb"
-        echo "... outputs $RECONDIR/${TARGET}.wpscan if anything found"
-        echo "... outputs $RECONDIR/${TARGET}.joomscan if anything found"
-        # do not background.  Limit number of simultaneous scans
-        scanURLs &
-
-        echo "starting fimapScan"
-        echo "... outputs $RECONDIR/${TARGET}.fimap if anything found"
-        fimapScan &
-
-        echo "starting mechDumpURLs"
-        echo "... outputs $RECONDIR/${TARGET}.mech-dump"
-        # do not background mech-dump.  There are dependencies in wfuzzURLs.
-        mechDumpURLs &
-
-        echo "starting zapScan"
-        echo "... outputs $RECONDIR/${TARGET}.zap.html"
-        # do not background.  Limit number of simultaneous scans
-        zapScan &
-
-        echo "starting wfuzzURLs"
-        echo "... outputs $RECONDIR/${TARGET}.wfuzz/"
-        wfuzzURLs &
-    fi
-
-    if [[ -f "$RECONDIR"/tmp/${TARGET}.spider.raw ]]
-    then
-        echo "starting exifScanURLs"
-        echo "... outputs $RECONDIR/${TARGET}.exif.html if anything found"
-        exifScanURLs &
-    fi
-    
-    jobscount=0
+    waitcount=0
     while jobs |grep -q Running
     do
-        echo "Jobs are still running.  Waiting... $jobscount out of 10080 minutes"
-        jobs -l
-        (( jobscount++ ))
-        if [[ "$jobscount" -gt 10080 ]]
+        if [[ -f "$JOBSPAUSEFILE" ]]
         then
-            echo "killing jobs"
+            echo "Pausing jobs.  $JOBSPAUSEFILE found.  Remove to continue"
+            JOBSPAUSE=1
+            for job in $(jobs -l |awk '{print $2}')
+            do
+                kill -SIGSTOP $job >/dev/null 2>&1
+            done
+            sleep 60
+            continue
+        elif [[ $JOBSPAUSE == 1 ]]
+        then
+            echo "Resuming jobs."
+            JOBSPAUSE=0
+            for job in $(jobs -l |awk '{print $2}')
+            do
+                kill -SIGCONT $job >/dev/null 2>&1
+            done
+        fi
+
+        pingPause &
+
+        (( waitcount++ ))
+
+        if [[ $(( waitcount % 5 )) == 0 ]]
+        then
+            echo "Jobs are still running.  Waiting... $waitcount out of $MAXWAIT minutes"
+            jobs -l |grep -v 'Done'
+        fi
+
+        if [[ "$waitcount" -gt $MAXWAIT ]]
+        then
+            echo "Waited long enough.  Killing jobs"
             IFS=$'\n'
+
             for job in $(jobs -l |awk '{print $2}')
             do
                 kill $job
             done
+
+            if screen -ls |grep -q ".${TARGET}."
+            then
+                echo "List of detached screens:"
+                screen -ls |grep ".${TARGET}."
+            fi
+            break
         else
             sleep 60
         fi
@@ -767,13 +818,53 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.defaultCreds"
     defaultCreds
     
-    if screen -ls |grep -q ".${TARGET}."
-    then
-        echo "List of detached screens:"
-        screen -ls |grep ".${TARGET}."
-    fi
-    
     set +x
+}
+################################################################################
+
+################################################################################
+function exitNow()
+{ 
+    local job
+    local screen
+
+    echo "$BORDER"
+    echo "RECEIVED SIGINT.   KILLING PIDS AND EXITING."
+
+    for job in $(jobs -l 2>/dev/null |awk '{print $2}')
+    do
+        kill $job >/dev/null 2>&1
+    done
+
+    for screen in $(screen -ls 2>&1|grep $TARGET |awk '{print $1}' |cut -d'.' -f1)
+    do
+        kill $screen >/dev/null 2>&1
+    done
+
+    sleep 2
+    screen -wipe >/dev/null 2>&1
+
+    sleep 2
+    ps -efwwww 2>/dev/null|grep -v $$ |grep "$TARGET" |awk '{print $2}' |xargs kill >/dev/null 2>&1
+    sleep 2
+    ps -efwwww 2>/dev/null|grep -v $$ |grep "$TARGET" |awk '{print $2}' |xargs kill -9 >/dev/null 2>&1
+
+    stty sane >/dev/null 2>&1
+
+    exit 0
+}
+
+################################################################################
+function pingPause()
+{ 
+    if [[ $PINGCHECK == 1 ]] \
+    && ! ping -s1 -c5 $TARGET >/dev/null 2>&1
+    then
+        echo "UNABLE TO PING $TARGET.  PAUSING JOBS"
+        touch "$JOBSPAUSEFILE" >/dev/null 2>&1
+    fi
+
+    return 0
 }
 ################################################################################
 
@@ -783,7 +874,7 @@ function jobunlock()
     local function=$1
     local tmpfile="${JOBSFILE}.tmp"
 
-    echo "jobunlock: unlocking $function"
+    echo "jobunlock: removing $function"
 
     while [[ -f "$tmpfile" ]]
     do
@@ -822,10 +913,9 @@ function joblock()
             do
                 joblist[${#joblist[@]}]=$job
             done
-            echo ""
             echo "joblock: $function is waiting for other jobs to finish. Limit $JOBSLIMIT"
-            echo "Running Jobs: ${joblist[@]}"
-            sleep $(( ( RANDOM * RANDOM + 1 ) % 60 + 60 ))
+            echo "    Running Jobs: ${joblist[@]}"
+            sleep $(( ( RANDOM * RANDOM + 1 ) % 120 + 180 ))
         else
             echo $function >> "$JOBSFILE"
             echo "joblock: allowing $function to run"
@@ -843,20 +933,6 @@ function joinBy()
     local IFS="$1"
     shift
     echo "$*"
-}
-################################################################################
-
-################################################################################
-function killHangs()
-{
-    # sometimes timeout will fork and hang
-    local scan
-    for scan in ike-scan joomscan sqlmap whatweb wpscan nikto fimap dirb ldapsearch redis-cli rpcclient smbclient dnsrecon dnsenum netkit-rsh showmount wget cewl mech-dump
-    do
-        pkill -t $TTY -f $scan
-    done
-
-    return 0
 }
 ################################################################################
 
@@ -885,8 +961,18 @@ function buildEnv()
     DATE=$(date +"%Y%m%d%H%M")
     USERAGENT='Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/5.0)'
     JOBSFILE="/tmp/mkrecon.${TARGET}.jobs"
-    JOBSLIMIT=2
+    JOBSLIMIT=3
     JOBSLIMITFILE="/tmp/mkrecon.${TARGET}.jobslimit"
+    JOBSPAUSEFILE="/tmp/mkrecon.${TARGET}.pause"
+    JOBSPAUSE=0
+    MAXWAIT=10080
+
+    if ping -s1 -c5 $TARGET >/dev/null 2>&1
+    then
+        PINGCHECK=1
+    else
+        PINGCHECK=0
+    fi
 
     rm -f "$JOBSFILE" >/dev/null 2>&1
     touch "$JOBSFILE"
@@ -1218,6 +1304,8 @@ function otherNmaps()
     udpports="U:$(joinBy , "${UDPPORTS[@]}")"
     scanports=$(joinBy , $tcpports $udpports)
 
+    echo "otherNmaps is scanning ports $scanports"
+
     ( timeout --kill-after=10 --foreground 172800 \
         nmap -T2 -Pn -p $scanports --script=ajp-brute \
         -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET 2>&1 \
@@ -1235,15 +1323,16 @@ function otherNmaps()
     ( timeout --kill-after=10 --foreground 172800 \
         nmap -T2 -Pn -p $scanports --script=oracle-sid-brute \
         -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET >/dev/null 2>&1 
+
         if grep -q '|' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute
         then
             for sid in $(awk '/^\|/ {print $2}' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute |grep -v oracle-sid-brute)
             do
-                timeout --kill-after=10 --foreground 172800 nmap -T2 -Pn -p $scanports \
+                timeout --kill-after=10 --foreground 7200 nmap -T2 -Pn -p $scanports \
                     --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid \
                     -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET \
                     >/dev/null 2>&1 &
-                timeout --kill-after=10 --foreground 172800 nmap -T2 -Pn -p $scanports \
+                timeout --kill-after=10 --foreground 7200 nmap -T2 -Pn -p $scanports \
                     --script oracle-enum-users \
                     --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst \
                     -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET \
@@ -1256,21 +1345,29 @@ function otherNmaps()
 
     ( timeout --kill-after=10 --foreground 172800 \
         nmap -T3 -Pn -sU -p 623 --script ipmi-brute \
-        -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET \
+        -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET 2>&1 \
         |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute \
         ; grep -q 'open|filtered' "$RECONDIR"/${TARGET}.nmap-ipmi-brute 2>/dev/null \
         && rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute 
     ) &
 
-    screen -dmS ${TARGET}.nmap-auth.$RANDOM timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=auth --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET
+    ( timeout --kill-after=10 --foreground 172800 \
+        nmap -T2 -Pn -p $scanports --script=auth --script-args http.useragent="$USERAGENT" \
+        -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET >/dev/null 2>&1
+    ) &
 
-    screen -dmS ${TARGET}.nmap-exploitvuln.$RANDOM timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=exploit,vuln --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln $TARGET
+    ( timeout --kill-after=10 --foreground 172800 \
+        nmap -T2 -Pn -p $scanports --script=exploit,vuln \
+        --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln \
+        $TARGET >/dev/null 2>&1
+    ) &
 
-    screen -dmS ${TARGET}.nmap-discoverysafe.$RANDOM timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=discovery,safe --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe $TARGET
+    ( timeout --kill-after=10 --foreground 172800 \
+        nmap -T2 -Pn -p $scanports --script=discovery,safe \
+        --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe \
+        $TARGET >/dev/null 2>&1
+    ) &
     
     jobunlock ${FUNCNAME[0]}
     return 0
@@ -2348,6 +2445,7 @@ function webDiscover()
     local a_dirbfiles=()
     local a_robots=()
     local a_urls=()
+    local dirbdelay
     local dirbfile
     local dirboutraw="$RECONDIR/tmp/dirbout.raw"
     local newurl
@@ -2360,9 +2458,11 @@ function webDiscover()
     local wordlist
     local urlfile
     local startepoch=$(date +%s)
-
     IFS=$'\n'
+
+    ################################################################################
     # Build dirb dictionary array
+
     for wordlist in /usr/share/dirb/wordlists/common.txt \
         /usr/share/dirb/wordlists/vulns/*txt \
         /usr/share/wfuzz/wordlist/general/admin-panels.txt \
@@ -2371,7 +2471,7 @@ function webDiscover()
         /usr/share/seclists/Discovery/Web-Content/URLs/*.txt \
         "$RECONDIR"/tmp/mkrweb.txt 
     do
-        if [[ $wordlist =~ raft|LinuxFileList|default-web-root|big.txt|common-and ]]
+        if [[ $wordlist =~ raft|LinuxFileList|default-web-root|big.txt|common-and|parameter|Kitchen ]]
         then 
             continue
         fi
@@ -2385,9 +2485,14 @@ function webDiscover()
         fi
     done
 
-    cat $(echo "${a_dirbfiles[*]}") 2>/dev/null |sort -u > "$webwordsfile"
+    cat $(echo "${a_dirbfiles[*]}") 2>/dev/null \
+        |egrep -v ' |\?|#|~' \
+        |sort -u \
+        > "$webwordsfile"
 
+    ################################################################################
 
+    ################################################################################
     # first run through baseurls
     # Get robots.txt and spider the baseurls
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
@@ -2413,41 +2518,60 @@ function webDiscover()
             then
                 a_robots[${#a_robots[@]}]="${url}${robotdir}"
             fi
-            timeout --kill-after=10 --foreground 300 \
+            timeout --kill-after=10 --foreground 900 \
                 wget -U "$USERAGENT" \
-                    --tries=20 --retry-connrefused --no-check-certificate -r -l3 --spider --force-html \
-                    -D $TARGET ${url}${robotdir} 2>&1 \
-                    |grep '^--' \
-                    |grep -v '(try:' \
-                    |awk '{ print $3 }' \
-                    >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
-        done
-
-        timeout --kill-after=10 --foreground 300 \
-            wget -U "$USERAGENT" \
-                --tries=20 --retry-connrefused --no-check-certificate -r -l3 --spider \
-                --force-html -D $TARGET "$url" 2>&1 \
+                --tries=20 --retry-connrefused --no-check-certificate -r -l3 \
+                --spider --force-html -D $TARGET ${url}${robotdir} 2>&1 \
                 |grep '^--' \
                 |grep -v '(try:' \
                 |awk '{ print $3 }' \
-                |grep "/$TARGET[:/]" \
-                >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
-    done
+                >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
+        done
 
+# TODO may be redundant
+#        timeout --kill-after=10 --foreground 900 \
+#            wget -U "$USERAGENT" \
+#            --tries=20 --retry-connrefused --no-check-certificate -r -l3 \
+#            --spider --force-html -D $TARGET "$url" 2>&1 \
+#            |grep '^--' \
+#            |grep -v '(try:' \
+#            |awk '{ print $3 }' \
+#            |grep "/$TARGET[:/]" \
+#            >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
+    done
+    ################################################################################
+
+    ################################################################################
     # second run through baseurls.  dirb may take hours
+    # Run dirb as concurrent background jobs, but add a delay based on number of urls.
+    dirbdelay=$(( $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null |wc -l) * 50 ))
+
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
-        timeout --kill-after=10 --foreground 3600 \
-            dirb "$url" "$webwordsfile" -a "$USERAGENT" -w -r -f -S \
-            >> "$dirboutraw" 2>&1
+        port=$(getPortFromUrl $url)
+        timeout --kill-after=10 --foreground 14400 \
+            dirb "$url" "$webwordsfile" -a "$USERAGENT" -z $dirbdelay -w -r -f -S \
+            >> "${dirboutraw}.${port}" 2>&1 &
     done
 
+    while jobs 2>&1|grep -q 'dirb'
+    do
+        wait -n $(jobs 2>&1|grep dirb |cut -d'[' -f2|cut -d']' -f1|head -1)
+    done
+
+    cat "${dirboutraw}".* > "$dirboutraw" 2>&1
+    ################################################################################
+
+    ################################################################################
     # build html file from robots.txt files
     for url in $(cat "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null|sort -u)
     do
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.robotspider.html
     done
+    ################################################################################
 
+    ################################################################################
+    # build dirburls file
     for url in $(grep CODE:200 "$dirboutraw" \
         |grep -v SIZE:0 \
         |awk '{print $2}' \
@@ -2469,14 +2593,17 @@ function webDiscover()
         |sed -e 's/\/\%2e\/*$/\//g' \
         |sort -u \
         > "$RECONDIR"/${TARGET}.dirburls
+    ################################################################################
 
+    ################################################################################
+    # build spider files
     for url in $(cat "$RECONDIR"/${TARGET}.dirburls 2>/dev/null )
     do
-        timeout --kill-after=10 --foreground 300 \
+        timeout --kill-after=10 --foreground 900 \
             wget -U "$USERAGENT" \
-            --tries=20 --retry-connrefused --no-check-certificate -r -l2 --spider --force-html \
-            -D $TARGET "$url" 2>&1 \
-            | grep '^--' \
+            --tries=20 --retry-connrefused --no-check-certificate -r -l2 \
+            --spider --force-html -D $TARGET "$url" 2>&1 \
+            |grep '^--' \
             |grep -v '(try:' \
             |egrep "$IP|$TARGET" \
             |awk '{ print $3 }' \
@@ -2498,7 +2625,9 @@ function webDiscover()
         urlfile=${url//\//,}
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.spider.html
     done
+    ################################################################################
 
+    ################################################################################
     # combine wget spider and dirb
     cat "$RECONDIR"/${TARGET}.dirburls "$RECONDIR"/${TARGET}.spider 2>/dev/null  \
         |cut -d'?' -f1 \
@@ -2538,7 +2667,10 @@ function webDiscover()
     do 
         echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.urls.html
     done
+    ################################################################################
 
+    ################################################################################
+    # build 401 urls file
     for url in $(grep CODE:401 "$RECONDIR"/tmp/${TARGET}.dirb/${TARGET}-*.dirb 2>/dev/null \
         |awk '{print $2}' \
         |sort -u)
@@ -2558,6 +2690,7 @@ function webDiscover()
             echo "$url" >> "$RECONDIR"/${TARGET}.urls.401
         fi
     done
+    ################################################################################
 
     jobunlock ${FUNCNAME[0]}
     printexitstats "${FUNCNAME[0]}" "$startepoch"
@@ -2900,75 +3033,72 @@ function wfuzzURLs()
     done
 
     # Pull urls from mech-dump
-    if [[ -f "$RECONDIR"/${TARGET}.mech-dump ]]
-    then
-        cat "$RECONDIR"/${TARGET}.mech-dump |while read line
-        do
-            if [[ $line =~ ^GET ]]
+    cat "$RECONDIR"/${TARGET}.mech-dump |while read line
+    do
+        if [[ $line =~ ^GET ]]
+        then
+            url=$(echo $line |awk '{print $2}')
+            a_vars=()
+            method=get
+            continue
+        fi
+    
+        if [[ $line =~ ^POST ]]
+        then
+            url=$(echo $line |awk '{print $2}')
+            a_vars=()
+            method=post
+            continue
+        fi
+    
+        if [[ $line =~ = ]] \
+        && [[ ! $line =~ NONAME ]] \
+        && [[ $url =~ http ]]
+        then
+            if [[ $line =~ (submit) ]] 
             then
-                url=$(echo $line |awk '{print $2}')
-                a_vars=()
-                method=get
-                continue
+                var=$(echo $line |awk '{print $1}'|cut -d'=' -f1)
+            else 
+                var=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ
             fi
-        
-            if [[ $line =~ ^POST ]]
-            then
-                url=$(echo $line |awk '{print $2}')
-                a_vars=()
-                method=post
-                continue
-            fi
-        
-            if [[ $line =~ = ]] \
-            && [[ ! $line =~ NONAME ]] \
-            && [[ $url =~ http ]]
-            then
-                if [[ $line =~ (submit) ]] 
-                then
-                    var=$(echo $line |awk '{print $1}'|cut -d'=' -f1)
-                else 
-                    var=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ
-                fi
-                a_vars[${#a_vars[@]}]=$var
+            a_vars[${#a_vars[@]}]=$var
 
 
-                if [[ $var =~ user ]] \
-                || [[ $var =~ login ]] \
-                || [[ $var =~ name ]] 
-                then
-                    varuser=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ
-                fi
-                if [[ $line =~ (password) ]]
-                then
-                    varpass=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZ2Z
-                fi
-                continue
-            fi
-        
-            if [[ $url =~ http ]] \
-            && [[ x${line}x == "xx" || $line =~ ^# ]] 
+            if [[ $var =~ user ]] \
+            || [[ $var =~ login ]] \
+            || [[ $var =~ name ]] 
             then
-                varstring=$(joinBy \& ${a_vars[@]})
-                if [[ $method == "get" ]]
-                then
-                    echo "none $url?$varstring" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw
-                fi
-                if [[ $method == "post" ]]
-                then
-                    echo "$varstring $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw
-                fi
-                if [[ x$varpass != 'x' ]] \
-                && [[ x$varuser != 'x' ]]
-                then
-                    echo "$varuser&$varpass $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw.login
-                fi
-                a_vars=()
-                varuser=''
-                varpass=''
+                varuser=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZZ
             fi
-        done
-    fi
+            if [[ $line =~ (password) ]]
+            then
+                varpass=$(echo $line |awk '{print $1}'|cut -d'=' -f1)=FUZ2Z
+            fi
+            continue
+        fi
+    
+        if [[ $url =~ http ]] \
+        && [[ x${line}x == "xx" || $line =~ ^# ]] 
+        then
+            varstring=$(joinBy \& ${a_vars[@]})
+            if [[ $method == "get" ]]
+            then
+                echo "none $url?$varstring" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw
+            fi
+            if [[ $method == "post" ]]
+            then
+                echo "$varstring $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw
+            fi
+            if [[ x$varpass != 'x' ]] \
+            && [[ x$varuser != 'x' ]]
+            then
+                echo "$varuser&$varpass $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw.login
+            fi
+            a_vars=()
+            varuser=''
+            varpass=''
+        fi
+    done
 
     sort -u "$RECONDIR"/tmp/${TARGET}.FUZZ.raw 2>/dev/null |grep "$TARGET" \
         > "$RECONDIR"/tmp/${TARGET}.FUZZ
@@ -4400,6 +4530,13 @@ function defaultCreds()
     local logfile="$RECONDIR"/${TARGET}.defaultCreds
     local startepoch=$(date +%s)
 
+    if [[ ! -f "$defpassfile" ]]
+    then
+        echo "Default passwords file not found: $defpassfile"
+        echo "A Kali update may have moved it"
+        return 1
+    fi
+
     for name in $(cat $defpassfile \
         |dos2unix -f |cut -d',' -f1 |tr '[A-Z]' '[a-z]' |sed -e 's/"//g' |sort -u)
     do
@@ -4425,6 +4562,8 @@ function defaultCreds()
 
 # record settings to diff for variable leakage
 set > /tmp/set1
+
+trap exitNow INT
 
 export PYTHONHTTPSVERIFY=0
 export PERL_LWP_SSL_VERIFY_HOSTNAME=0

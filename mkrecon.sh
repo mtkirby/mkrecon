@@ -858,7 +858,7 @@ function exitNow()
 function pingPause()
 { 
     if [[ $PINGCHECK == 1 ]] \
-    && ! ping -s1 -c5 $TARGET >/dev/null 2>&1
+    && ! ping -s1 -c5 -W 5 $TARGET >/dev/null 2>&1
     then
         echo "UNABLE TO PING $TARGET.  PAUSING JOBS"
         touch "$JOBSPAUSEFILE" >/dev/null 2>&1
@@ -967,7 +967,7 @@ function buildEnv()
     JOBSPAUSE=0
     MAXWAIT=10080
 
-    if ping -s1 -c5 $TARGET >/dev/null 2>&1
+    if ping -s1 -c5 -W 5 $TARGET >/dev/null 2>&1
     then
         PINGCHECK=1
     else

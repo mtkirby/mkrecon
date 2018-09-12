@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180911
+# version 20180912
 
 umask 077
 
@@ -857,8 +857,12 @@ function exitNow()
 ################################################################################
 function pingPause()
 { 
+    # Run up to 3 pings to check if target is still alive
+    # PINGCHECK was set in buildEnv and will be 0 if target is not pingable
     if [[ $PINGCHECK == 1 ]] \
-    && ! ping -s1 -c5 -W 5 $TARGET >/dev/null 2>&1
+    && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1
+    && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1
+    && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1
     then
         echo "UNABLE TO PING $TARGET.  PAUSING JOBS"
         touch "$JOBSPAUSEFILE" >/dev/null 2>&1
@@ -967,7 +971,7 @@ function buildEnv()
     JOBSPAUSE=0
     MAXWAIT=10080
 
-    if ping -s1 -c5 -W 5 $TARGET >/dev/null 2>&1
+    if ping -s1 -c1 -W 5 $TARGET >/dev/null 2>&1
     then
         PINGCHECK=1
     else

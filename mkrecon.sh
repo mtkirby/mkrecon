@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180912
+# version 20180913
 
 umask 077
 
@@ -577,36 +577,6 @@ function MAIN()
     otherNmaps &
 
     ################################################################################
-    # Run these functions first.  There are dependencies on these.
-
-    if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
-    then
-        #echo "starting webWords"
-        #echo "... outputs $RECONDIR/${TARGET}.webwords"
-        #webWords 
-
-        echo "starting webDiscover.  This may take several hours per web service."
-        echo "... outputs $RECONDIR/${TARGET}.robots.txt"
-        echo "... outputs $RECONDIR/${TARGET}.robotspider.html"
-        echo "... outputs $RECONDIR/${TARGET}.dirburls"
-        echo "... outputs $RECONDIR/${TARGET}.urls.401"
-        echo "... outputs $RECONDIR/${TARGET}.spider"
-        echo "... outputs $RECONDIR/${TARGET}.spider.html"
-        echo "... outputs $RECONDIR/${TARGET}.urls"
-        echo "... outputs $RECONDIR/${TARGET}.urls.html"
-        # do not background.  There are dependencies below.
-        webDiscover 
-    fi
-
-    if [[ -f "$RECONDIR"/${TARGET}.urls ]]
-    then
-        echo "starting mechDumpURLs"
-        echo "... outputs $RECONDIR/${TARGET}.mech-dump"
-        # do not background mech-dump.  There are dependencies in wfuzzURLs.
-        mechDumpURLs 
-    fi
-
-    ################################################################################
 
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
@@ -650,10 +620,27 @@ function MAIN()
         echo "starting wapitiScan"
         echo "... outputs $RECONDIR/${TARGET}.\$port.wapiti"
         wapitiScan &
+
+        echo "starting webDiscover.  This may take several hours per web service."
+        echo "... outputs $RECONDIR/${TARGET}.robots.txt"
+        echo "... outputs $RECONDIR/${TARGET}.robotspider.html"
+        echo "... outputs $RECONDIR/${TARGET}.dirburls"
+        echo "... outputs $RECONDIR/${TARGET}.urls.401"
+        echo "... outputs $RECONDIR/${TARGET}.spider"
+        echo "... outputs $RECONDIR/${TARGET}.spider.html"
+        echo "... outputs $RECONDIR/${TARGET}.urls"
+        echo "... outputs $RECONDIR/${TARGET}.urls.html"
+        # do not background.  There are dependencies below.
+        webDiscover 
     fi
     
     if [[ -f "$RECONDIR"/${TARGET}.urls ]]
     then
+        echo "starting mechDumpURLs"
+        echo "... outputs $RECONDIR/${TARGET}.mech-dump"
+        # do not background mech-dump.  There are dependencies in wfuzzURLs.
+        mechDumpURLs 
+
         if [[ -f "$RECONDIR"/${TARGET}.mech-dump ]]
         then
             echo "starting wfuzzURLs"
@@ -1163,6 +1150,7 @@ function buildEnv()
     echo 'wls-wsat/ParticipantPortType11' >> "$RECONDIR"/tmp/mkrweb.txt
     echo 'wls-wsat/RegistrationRequesterPortType11' >> "$RECONDIR"/tmp/mkrweb.txt
     echo 'wls-wsat/CoordinatorPortType' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'solr' >> "$RECONDIR"/tmp/mkrweb.txt
 
 
     if [[ ! -f /usr/share/wordlists/rockyou.txt ]]
@@ -2474,7 +2462,7 @@ function webDiscover()
     local shortfile
     local sslflag
     local url
-    local webwordsfile="$RECONDIR/tmp/webwordsfile"
+    local webdictfile="$RECONDIR/tmp/webdictfile"
     local wordlist
     local urlfile
     local startepoch=$(date +%s)
@@ -2507,8 +2495,10 @@ function webDiscover()
 
     cat $(echo "${a_dirbfiles[*]}") 2>/dev/null \
         |egrep -v ' |\?|#|~' \
+        |dos2unix -f \
+        |egrep -vi '\.(png|gif|jpg|ico)$' \
         |sort -u \
-        > "$webwordsfile"
+        > "$webdictfile"
 
     ################################################################################
 
@@ -2564,13 +2554,16 @@ function webDiscover()
     ################################################################################
     # second run through baseurls.  dirb may take hours
     # Run dirb as concurrent background jobs, but add a delay based on number of urls.
+    echo $BORDER
+    echo "# webDiscover IS STARTING DIRB WITH A TIME LIMIT OF 24 HOURS"
+    echo $BORDER
     dirbdelay=$(( $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null |wc -l) * 50 ))
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
         port=$(getPortFromUrl $url)
-        timeout --kill-after=10 --foreground 14400 \
-            dirb "$url" "$webwordsfile" -a "$USERAGENT" -z $dirbdelay -w -r -f -S \
+        timeout --kill-after=10 --foreground 86400 \
+            dirb "$url" "$webdictfile" -a "$USERAGENT" -z $dirbdelay -w -r -f -S \
             >> "${dirboutraw}.${port}" 2>&1 &
     done
 
@@ -2793,7 +2786,8 @@ function niktoScan()
         echo "$url" >> "$RECONDIR"/${TARGET}.nikto
         # sometimes nikto will prompt for a submission of weird data.  Echo 'n' into pipe.
         echo 'n' |timeout --kill-after=10 --foreground 3600 \
-            nikto -no404 -nointeractive -useragent "$USERAGENT" -host "$url" >>"$RECONDIR"/${TARGET}.nikto 2>&1
+            nikto -no404 -nointeractive -C all -useragent "$USERAGENT" -host "$url" \
+            >>"$RECONDIR"/${TARGET}.nikto 2>&1
     done
 
     jobunlock ${FUNCNAME[0]}
@@ -3105,7 +3099,8 @@ function wfuzzURLs()
             then
                 echo "none $url?$varstring" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw
             fi
-            if [[ $method == "post" ]]
+            if [[ $method == "post" ]] \
+            && [[ $varstring =~ . ]]
             then
                 echo "$varstring $url" >> "$RECONDIR"/tmp/${TARGET}.FUZZ.raw
             fi
@@ -4182,6 +4177,7 @@ function WAScan()
     fi
 
     chmod -R 700 /tmp/WAScan
+    cd /tmp/WAScan
 
     pip install -r /tmp/WAScan/requirements.txt >/dev/null 2>&1
 
@@ -4198,6 +4194,8 @@ function WAScan()
             |uniq \
             >> "$RECONDIR"/${TARGET}.${port}.WAScan 
     done
+
+    cd -
 
     jobunlock ${FUNCNAME[0]}
     printexitstats "${FUNCNAME[0]}" "$startepoch"

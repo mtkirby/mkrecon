@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180913
+# version 20180916
 
 umask 077
 
@@ -59,9 +59,10 @@ function MAIN()
     echo "$BORDER"
     echo "# mkrecon may take anywhere between a few minutes to upto 1 week depending on services."
     echo "# Some tasks are backgrounded, depending on network impact."
-    echo "# jobs limit is set to $JOBSLIMIT"
+    echo "# Jobs limit is set to $JOBSLIMIT"
     echo "# If you want to increase the number of active jobs, edit $JOBSLIMITFILE"
-    echo "# To pause jobs, touch $JOBSPAUSEFILE"
+    echo "# To pause new jobs, touch $JOBSPAUSEFILE"
+    echo "# To pause mkrecon, run kill -SIGSTOP $$"
     echo "$BORDER"
     
     echo "starting snmpScan"
@@ -852,7 +853,9 @@ function pingPause()
     && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1
     then
         echo "UNABLE TO PING $TARGET.  PAUSING JOBS"
+        echo "REMOVE $JOBSPAUSEFILE and run 'kill -SIGCONT $$' TO RESUME"
         touch "$JOBSPAUSEFILE" >/dev/null 2>&1
+        kill -SIGSTOP $$
     fi
 
     return 0
@@ -2444,6 +2447,35 @@ function clusterdScan()
     printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
 }
+################################################################################
+
+################################################################################
+function dirbScan()
+{
+    local dirbdelay="$1"
+    local webdictfiles="$2"
+    local url="$3"
+    local port="$4"
+    local webdictfilescount="$5"
+    local dirboutraw="$6"
+    local splitfile
+    local webdictfile
+    local webdictfilecount
+
+    for webdictfile in "$webdictfiles"/*
+    do
+        pingPause
+        ((webdictfilecount++))
+        splitfile=${webdictfile##*/}
+        timeout --kill-after=10 --foreground 1800 \
+            dirb "$url" "$webdictfile" -a "$USERAGENT" -z $dirbdelay -w -r -f -S \
+            >> "${dirboutraw}.${port}.${splitfile}" 2>&1 
+        echo "dirb for $url is $(( (webdictfilecount * 100 ) / webdictfilescount ))% done"
+    done
+
+    return 0
+}
+################################################################################
 
 ################################################################################
 function webDiscover()
@@ -2459,10 +2491,16 @@ function webDiscover()
     local newurl
     local port
     local robotdir
-    local shortfile
+    local splitfile
     local sslflag
     local url
-    local webdictfile="$RECONDIR/tmp/webdictfile"
+    local urlcount
+    local urlcounttotal
+    local urlcountperc
+    local webdictfile
+    local webdictfilecount
+    local webdictfiles="$RECONDIR/tmp/webdictfiles"
+    local webdictfilescount
     local wordlist
     local urlfile
     local startepoch=$(date +%s)
@@ -2493,12 +2531,17 @@ function webDiscover()
         fi
     done
 
+    mkdir -p "$webdictfiles"
+    cd "$webdictfiles" 
     cat $(echo "${a_dirbfiles[*]}") 2>/dev/null \
         |egrep -v ' |\?|#|~' \
         |dos2unix -f \
         |egrep -vi '\.(png|gif|jpg|ico)$' \
+        |sed -e 's|^/||' \
         |sort -u \
-        > "$webdictfile"
+        |split -l 2000
+    cd - >/dev/null 2>&1
+    webdictfilescount=$(ls -1 "$webdictfiles"|wc -l)
 
     ################################################################################
 
@@ -2537,17 +2580,6 @@ function webDiscover()
                 |awk '{ print $3 }' \
                 >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
         done
-
-# TODO may be redundant
-#        timeout --kill-after=10 --foreground 900 \
-#            wget -U "$USERAGENT" \
-#            --tries=20 --retry-connrefused --no-check-certificate -r -l3 \
-#            --spider --force-html -D $TARGET "$url" 2>&1 \
-#            |grep '^--' \
-#            |grep -v '(try:' \
-#            |awk '{ print $3 }' \
-#            |grep "/$TARGET[:/]" \
-#            >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
     done
     ################################################################################
 
@@ -2555,22 +2587,21 @@ function webDiscover()
     # second run through baseurls.  dirb may take hours
     # Run dirb as concurrent background jobs, but add a delay based on number of urls.
     echo $BORDER
-    echo "# webDiscover IS STARTING DIRB WITH A TIME LIMIT OF 24 HOURS"
+    echo "# webDiscover IS STARTING DIRB WITH A MAXIMUM TIME LIMIT OF $(((1800 * webdictfilescount) / 60 / 60)) HOURS"
     echo $BORDER
     dirbdelay=$(( $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null |wc -l) * 50 ))
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
         port=$(getPortFromUrl $url)
-        timeout --kill-after=10 --foreground 86400 \
-            dirb "$url" "$webdictfile" -a "$USERAGENT" -z $dirbdelay -w -r -f -S \
-            >> "${dirboutraw}.${port}" 2>&1 &
+        dirbScan "$dirbdelay" "$webdictfiles" "$url" "$port" "$webdictfilescount" "$dirboutraw" &
     done
 
-    while jobs 2>&1|grep -q 'dirb'
+    while jobs 2>&1|grep -q dirbScan
     do
-        wait -n $(jobs 2>&1|grep dirb |cut -d'[' -f2|cut -d']' -f1|head -1)
+        wait -n $(jobs 2>&1|grep dirbScan |cut -d'[' -f2|cut -d']' -f1|head -1)
     done
+    echo "dirb is done"
 
     cat "${dirboutraw}".* > "$dirboutraw" 2>&1
     ################################################################################
@@ -2610,7 +2641,11 @@ function webDiscover()
 
     ################################################################################
     # build spider files
-    for url in $(cat "$RECONDIR"/${TARGET}.dirburls 2>/dev/null )
+    urlcounttotal=$(cat "$RECONDIR"/${TARGET}.baseurls "$RECONDIR"/${TARGET}.dirburls 2>/dev/null |wc -l)
+    urlcount=0
+    for url in $(cat "$RECONDIR"/${TARGET}.baseurls "$RECONDIR"/${TARGET}.dirburls \
+        2>/dev/null \
+        |sort -u )
     do
         timeout --kill-after=10 --foreground 900 \
             wget -U "$USERAGENT" \
@@ -2621,6 +2656,17 @@ function webDiscover()
             |egrep "$IP|$TARGET" \
             |awk '{ print $3 }' \
             >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
+        ((urlcount++))
+        urlcountperc=$(echo $(( (urlcount * 100 ) / urlcounttotal )))
+        if [[ $urlcountperc -ge 23 ]] \
+        && [[ $urlcountperc -le 27 ]] \
+        || [[ $urlcountperc -ge 47 ]] \
+        && [[ $urlcountperc -le 53 ]] \
+        || [[ $urlcountperc -ge 73 ]] \
+        && [[ $urlcountperc -le 77 ]]
+        then
+            echo "Spider is $(( (urlcount * 100 ) / urlcounttotal ))% done"
+        fi
     done
 
     cat "$RECONDIR"/tmp/${TARGET}.spider.raw \
@@ -4195,7 +4241,7 @@ function WAScan()
             >> "$RECONDIR"/${TARGET}.${port}.WAScan 
     done
 
-    cd -
+    cd - >/dev/null 2>&1
 
     jobunlock ${FUNCNAME[0]}
     printexitstats "${FUNCNAME[0]}" "$startepoch"

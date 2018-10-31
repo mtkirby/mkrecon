@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20180916
+# version 20181029
 
 umask 077
 
@@ -970,7 +970,7 @@ function buildEnv()
     DATE=$(date +"%Y%m%d%H%M")
     USERAGENT='Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/5.0)'
     JOBSFILE="/tmp/mkrecon.${TARGET}.jobs"
-    JOBSLIMIT=3
+    JOBSLIMIT=2
     JOBSLIMITFILE="/tmp/mkrecon.${TARGET}.jobslimit"
     JOBSPAUSEFILE="/tmp/mkrecon.${TARGET}.pause"
     JOBLOCKFILE="/tmp/mkrecon.${TARGET}.lock"
@@ -1155,6 +1155,8 @@ function buildEnv()
     echo 'wls-wsat/CoordinatorPortType' >> "$RECONDIR"/tmp/mkrweb.txt
     echo 'solr' >> "$RECONDIR"/tmp/mkrweb.txt
 
+    # you can add urls to /tmp/mkrweb.txt to be included in the scan
+    cat /tmp/mkrweb.txt >> "$RECONDIR"/tmp/mkrweb.txt 2>/dev/null
 
     if [[ ! -f /usr/share/wordlists/rockyou.txt ]]
     then
@@ -1479,7 +1481,7 @@ function snmpScan()
         |sort -u \
         >"$RECONDIR"/tmp/snmp.txt
 
-    nmap -Pn -T2 -p 161 -sU --script snmp-brute $TARGET --script-args snmp-brute.communitiesdb="$RECONDIR"/tmp/snmp.txt -oN "$RECONDIR"/${TARGET}.nmap.snmp-brute >/dev/null 2>&1
+    nmap -Pn -T1 -p 161 -sU --script snmp-brute $TARGET --script-args snmp-brute.communitiesdb="$RECONDIR"/tmp/snmp.txt -oN "$RECONDIR"/${TARGET}.nmap.snmp-brute >/dev/null 2>&1
     
     if grep -q 'Valid credentials' "$RECONDIR"/${TARGET}.nmap.snmp-brute 2>/dev/null
     then
@@ -2467,7 +2469,7 @@ function dirbScan()
         pingPause
         ((webdictfilecount++))
         splitfile=${webdictfile##*/}
-        timeout --kill-after=10 --foreground 1800 \
+        timeout --kill-after=10 --foreground 3600 \
             dirb "$url" "$webdictfile" -a "$USERAGENT" -z $dirbdelay -w -r -f -S \
             >> "${dirboutraw}.${port}.${splitfile}" 2>&1 
         echo "dirb for $url is $(( (webdictfilecount * 100 ) / webdictfilescount ))% done"
@@ -2587,7 +2589,7 @@ function webDiscover()
     # second run through baseurls.  dirb may take hours
     # Run dirb as concurrent background jobs, but add a delay based on number of urls.
     echo $BORDER
-    echo "# webDiscover IS STARTING DIRB WITH A MAXIMUM TIME LIMIT OF $(((1800 * webdictfilescount) / 60 / 60)) HOURS"
+    echo "# webDiscover IS STARTING DIRB WITH A MAXIMUM TIME LIMIT OF $(((3600 * webdictfilescount) / 60 / 60)) HOURS"
     echo $BORDER
     dirbdelay=$(( $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null |wc -l) * 50 ))
 
@@ -2812,6 +2814,9 @@ function zapScan()
 
     screen -ls ${TARGET}.zap${port} |grep ${TARGET}.zap${port} |awk '{print $1}'|cut -d'.' -f1 |xargs kill
 
+    # log/data files are large and useless
+    rm -rf "$RECONDIR"/tmp/zapsession.* >/dev/null 2>&1
+
     jobunlock ${FUNCNAME[0]}
     printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
@@ -2922,7 +2927,7 @@ function hydraScanURLs()
             echo "TESTING $url with userpass.lst"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
             timeout --kill-after=10 --foreground 86400 \
                 hydra.mkrecon -I -C "$RECONDIR"/tmp/userpass.lst \
-                -u -t 2 $sslflag -s $port $TARGET http-get "$path" \
+                -u -t 3 $sslflag -s $port $TARGET http-get "$path" \
                 >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
     
             # Test with separate user/pass files
@@ -2930,7 +2935,7 @@ function hydraScanURLs()
             echo "TESTING $url with users.lst and passwds.lst"  >> "$RECONDIR"/${TARGET}.hydra/${hydrafile}
             timeout --kill-after=10 --foreground 86400 \
                 hydra.mkrecon -I -L "$RECONDIR"/tmp/users.lst -P "$RECONDIR"/tmp/passwds.lst \
-                -e nsr -u -t 5 $sslflag -s $port $TARGET http-get "$path" \
+                -e nsr -u -t 3 $sslflag -s $port $TARGET http-get "$path" \
                 >> "$RECONDIR"/${TARGET}.hydra/${hydrafile} 2>&1
     
             if grep -q 'successfully completed' "$RECONDIR"/${TARGET}.hydra/${hydrafile}
@@ -3530,8 +3535,8 @@ function scanURLs()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
         timeout --kill-after=10 --foreground 1800 \
-            wpscan -a "$USERAGENT" -r -t3 --follow-redirection --disable-tls-checks -e \
-            --no-banner --no-color --batch --url "$url" \
+            wpscan --user-agent="$USERAGENT" -t3  --ignore-main-redirect --no-banner \
+            --disable-tls-checks -e --no-banner -f cli-no-color --url "$url" \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
 
@@ -3539,8 +3544,9 @@ function scanURLs()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.wpscan
         echo "CRACKING ADMIN FOR URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
         timeout --kill-after=10 --foreground 1800 \
-            wpscan -a "$USERAGENT" -r -t 3 --disable-tls-checks --wordlist "$RECONDIR"/tmp/passwds.lst \
-            --username admin --url "$url" \
+            wpscan --user-agent="$USERAGENT" -t3  --ignore-main-redirect \
+            --no-banner --disable-tls-checks --no-banner -f cli-no-color \
+            --wordlist "$RECONDIR"/tmp/passwds.lst --username admin --url "$url" \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.wpscan 2>&1
     done
@@ -4465,6 +4471,26 @@ function domainNameScan()
     echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
     echo "host -t TXT $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
     host -t TXT $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
+
+    echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "host -t HINFO $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
+    host -t HINFO $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
+
+    echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "host -t SOA $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
+    host -t SOA $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
+
+    echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "host -t NS $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
+    host -t NS $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
+
+    echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "host -t A $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
+    host -t A $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
+
+    echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
+    echo "host -t AAAA $domain" >>"$RECONDIR"/${TARGET}.dnsinfo
+    host -t AAAA $domain >>"$RECONDIR"/${TARGET}.dnsinfo 2>&1
 
     echo "$BORDER" >>"$RECONDIR"/${TARGET}.dnsinfo >>"$RECONDIR"/${TARGET}.dnsinfo
     echo "host -t TXT _kerberos.$domain" >>"$RECONDIR"/${TARGET}.dnsinfo

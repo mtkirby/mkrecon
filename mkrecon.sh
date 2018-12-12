@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20181029
+# version 20181211
 
 umask 077
 
@@ -89,6 +89,8 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.openvas.csv"
     echo "... outputs $RECONDIR/${TARGET}.openvas.html"
     echo "... outputs $RECONDIR/${TARGET}.openvas.txt"
+    echo "... outputs $RECONDIR/${TARGET}.openvas.nbe"
+    echo "... outputs $RECONDIR/${TARGET}.openvas.pdf"
     openvasScan &
 
     echo "starting crackers"
@@ -317,6 +319,15 @@ function MAIN()
                 echo "... outputs $RECONDIR/${TARGET}.$port.oracle.hydra"
                 #echo "... outputs $RECONDIR/${TARGET}.nmap-oracle-brute.\$sid"
                 oracleScan $port &
+            fi
+    
+            # cassandra
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service =~ 'cassandra' ]]
+            then
+                echo "starting cassandraScan $port"
+                echo "... outputs $RECONDIR/${TARGET}.$port.cassandra"
+                cassandraScan $port &
             fi
     
             # vnc
@@ -806,6 +817,10 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.defaultCreds"
     defaultCreds
     
+    rm -f "$JOBSFILE" >/dev/null 2>&1
+    rm -f "$JOBSLIMITFILE" >/dev/null 2>&1
+
+
     set +x
 }
 ################################################################################
@@ -952,7 +967,7 @@ function buildEnv()
     local pkg
     local icdir
     local testdir
-    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-pip routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
+    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-asn1crypto python-openssl python-pyasn1 python-pyasn1-modules python-qt4reactor python-rdpy python-rsa python-twisted python-twisted-bin python-twisted-web python3-asn1crypto python3-openssl python3-pyasn1 python3-pyasn1-modules python3-rsa python3-twisted python3-twisted-bin python-pip python-rdpy python-selenium python3-selenium routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     for pkg in $pkgs
     do
@@ -1399,6 +1414,8 @@ function openvasScan()
     local reportCSV
     local reportTXT
     local reportHTML
+    local reportNBE
+    local reportPDF
     local pkg
     local startepoch=$(date +%s)
 
@@ -1422,6 +1439,8 @@ function openvasScan()
     reportCSV=$(omp -u $ovusername -w $ovpassword -F |awk '/  CSV Results$/ {print $1}' |head -1)
     reportTXT=$(omp -u $ovusername -w $ovpassword -F |awk '/  TXT$/ {print $1}' |head -1)
     reportHTML=$(omp -u $ovusername -w $ovpassword -F |awk '/  HTML$/ {print $1}' |head -1)
+    reportNBE=$(omp -u $ovusername -w $ovpassword -F |awk '/  NBE$/ {print $1}' |head -1)
+    reportPDF=$(omp -u $ovusername -w $ovpassword -F |awk '/  PDF$/ {print $1}' |head -1)
 
     # If you want customized settings, call the profile "mkrecon"
     if omp -u $ovusername -w $ovpassword -g 2>&1 |egrep -q ' mkrecon$'
@@ -1459,6 +1478,10 @@ function openvasScan()
         >"$RECONDIR"/${TARGET}.openvas.txt 2>&1
     omp -u $ovusername -w $ovpassword --get-report $scanUuid --format $reportHTML \
         >"$RECONDIR"/${TARGET}.openvas.html 2>&1
+    omp -u $ovusername -w $ovpassword --get-report $scanUuid --format $reportNBE \
+        >"$RECONDIR"/${TARGET}.openvas.nbe 2>&1
+    omp -u $ovusername -w $ovpassword --get-report $scanUuid --format $reportPDF \
+        >"$RECONDIR"/${TARGET}.openvas.pdf 2>&1
 
     printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
@@ -2158,6 +2181,7 @@ function doHydra()
     timeout --kill-after=10 --foreground 172800 \
         hydra.mkrecon -I -C "$RECONDIR"/tmp/userpass.lst -u -t 2 -s $port $TARGET $service \
         2>&1 \
+        |egrep -v 'is not allowed to connect to this MySQL server|\[ERROR\]' \
         |strings -a \
         >> "$RECONDIR"/${TARGET}.$port.$service.hydra 2>&1
 
@@ -3488,8 +3512,8 @@ function scanURLs()
 
     screen -dmS ${TARGET}.urlsew.$RANDOM timeout --kill-after=10 --foreground 172800 \
         eyewitness --user-agent "$USERAGENT" --threads 2 -d "$RECONDIR"/${TARGET}.urlsEyeWitness \
-        --max-retries 10 --timeout 20 \
-        --no-dns --no-prompt --headless -f "$RECONDIR"/${TARGET}.urls
+        --max-retries 10 --timeout 20 --web \
+        --no-dns --no-prompt -f "$RECONDIR"/${TARGET}.urls
 
     # run whatweb on top dirs
     for url in $(egrep '/$' "$RECONDIR"/${TARGET}.urls)
@@ -3609,7 +3633,7 @@ function mesosScan()
     local output
     local startepoch=$(date +%s)
 
-    for cmd in version env trace health status info flags features dump system/stats metrics/snapshot
+    for cmd in version env trace health status info flags features dump system/stats metrics/snapshot files/debug master/state master/health master/slaves master/tasks
     do
         output=$(timeout --kill-after=10 --foreground 1800 \
             curl -A "$USERAGENT" \
@@ -3664,9 +3688,10 @@ function mongoCrack()
     done
     export GOPATH=$GOPATH:/usr/share/gocode
 
-    if [[ ! -d /tmp/krkr ]]
+    if ! goGit https://github.com/averagesecurityguy/krkr /tmp/krkr
     then
-        git clone https://github.com/averagesecurityguy/krkr /tmp/krkr >/dev/null 2>&1
+        echo "Failed to clone git in ${FUNCNAME[0]}"
+        return 1
     fi
 
     chmod -R 700 /tmp/krkr
@@ -4217,21 +4242,16 @@ function WAScan()
     local scan
     local startepoch=$(date +%s)
 
-    if [[ ! -d /tmp/WAScan ]]
+    if ! goGit https://github.com/m4ll0k/WAScan /tmp/WAScan
     then
-        git clone https://github.com/m4ll0k/WAScan /tmp/WAScan >/dev/null 2>&1
-    fi
-
-    if [[ ! -f /tmp/WAScan/wascan.py ]]
-    then
-        echo "FAILED TO GIT CLONE WAScan"
+        echo "Failed to clone git in ${FUNCNAME[0]}"
         return 1
     fi
 
-    chmod -R 700 /tmp/WAScan
     cd /tmp/WAScan
 
     pip install -r /tmp/WAScan/requirements.txt >/dev/null 2>&1
+    chmod 700 /tmp/WAScan/wascan.py
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
@@ -4266,16 +4286,12 @@ function badKeyScan()
     local port
     local startepoch=$(date +%s)
 
-    if [[ ! -d /tmp/ssh-badkeys/authorized ]]
+    if ! goGit https://github.com/rapid7/ssh-badkeys /tmp/ssh-badkeys
     then
-        git clone https://github.com/rapid7/ssh-badkeys /tmp/ssh-badkeys >/dev/null 2>&1
-    fi
-    if [[ ! -d /tmp/ssh-badkeys/authorized ]]
-    then
-        echo "FAILED TO GIT CLONE ssh-badkeys"
+        echo "Failed to clone git in ${FUNCNAME[0]}"
         return 1
     fi
-    chmod -R 700 /tmp/ssh-badkeys
+
     for yml in /tmp/ssh-badkeys/authorized/*.yml
     do
         key=${yml/.yml/}.key
@@ -4331,6 +4347,43 @@ function wafw00fScan()
         echo "TESTING $url" >> "$RECONDIR"/${TARGET}.wafw00f
         timeout --kill-after 10 --foreground 14400 \
             wafw00f "$url" >> "$RECONDIR"/${TARGET}.wafw00f 2>&1
+    done
+
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
+    return 0
+}
+################################################################################
+
+################################################################################
+function cassandraScan()
+{
+    joblock ${FUNCNAME[0]}
+
+    local port=$1
+    local passwd
+    local user
+    local startepoch=$(date +%s)
+
+    if ! goGit http://git-wip-us.apache.org/repos/asf/cassandra.git /tmp/cassandra
+    then
+        echo "Failed to clone git in ${FUNCNAME[0]}"
+        return 1
+    fi
+
+    for passwd in cassandra casadmin $(cat $RECONDIR/tmp/passwds.lst)
+    do
+        for user in cassandra casadmin
+        do
+            echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.cassandra
+            echo "# Trying cassandra and $passwd" >> "$RECONDIR"/${TARGET}.$port.cassandra
+            /tmp/cassandra/bin/cqlsh -u $user -p $passwd -e 'LIST USERS;LIST PERMISSIONS;LIST ROLES;DESCRIBE CLUSTER;DESCRIBE KEYSPACES;DESCRIBE TABLES; DESCRIBE FULL SCHEMA;DESCRIBE TABLES;' ${TARGET} $port >> "$RECONDIR"/${TARGET}.$port.cassandra 2>&1
+        done
+
+        if grep -q Keyspace "$RECONDIR"/${TARGET}.$port.cassandra
+        then
+            break
+        fi
     done
 
     jobunlock ${FUNCNAME[0]}
@@ -4413,6 +4466,40 @@ function arachniScan()
     return 0
 }
 ################################################################################
+
+################################################################################
+function goGit()
+{
+    local giturl=$1
+    local dir=$2
+
+    # avoid collisions
+    sleep $(( ( RANDOM * RANDOM + 1 ) % 5 + 1 ))
+    if ps -efwww 2>&1 |grep -v grep |grep -q "$giturl"
+    then
+        while ps -efwww 2>&1 |grep -v grep |grep -q "$giturl"
+        do
+            sleep 30
+        done
+        return 0
+    fi
+
+    if [[ ! -d "$dir/.git" ]]
+    then
+        git clone "$giturl" "$dir" >/dev/null 2>&1
+    fi
+    chmod 700 "$dir"
+
+    if [[ ! -d "$dir/.git" ]]
+    then
+        echo "Unable to git clone $giturl"
+        return 1
+    fi
+
+    return 0
+}
+################################################################################
+
 
 ################################################################################
 function portcheck()

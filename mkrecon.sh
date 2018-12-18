@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20181211
+# version 20181217
 
 umask 077
 
@@ -417,6 +417,15 @@ function MAIN()
                 zookeeperScan $port &
             fi
 
+            # RTSP
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $service =~ rtsp ]] 
+            then
+                # do not background.  This may need to build cameradar
+                echo "... outputs $RECONDIR/${TARGET}.${port}.cameradar"
+                rtspScan $port 
+            fi
+
             # mesos
             # nmap sometimes shows mesos as "unknown", so probe for a page
             if [[ $protocol == 'tcp' ]] \
@@ -594,7 +603,6 @@ function MAIN()
     then
         echo "starting clusterdScan"
         echo "... outputs $RECONDIR/${TARGET}.clusterd"
-        # do not background.  Limit number of simultaneous scans
         clusterdScan &
 
         echo "starting WAScan"
@@ -967,7 +975,7 @@ function buildEnv()
     local pkg
     local icdir
     local testdir
-    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-asn1crypto python-openssl python-pyasn1 python-pyasn1-modules python-qt4reactor python-rdpy python-rsa python-twisted python-twisted-bin python-twisted-web python3-asn1crypto python3-openssl python3-pyasn1 python3-pyasn1-modules python3-rsa python3-twisted python3-twisted-bin python-pip python-rdpy python-selenium python3-selenium routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
+    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git go-dep golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-asn1crypto python-openssl python-pyasn1 python-pyasn1-modules python-qt4reactor python-rdpy python-rsa python-twisted python-twisted-bin python-twisted-web python3-asn1crypto python3-openssl python3-pyasn1 python3-pyasn1-modules python3-rsa python3-twisted python3-twisted-bin python-pip python-rdpy python-selenium python3-selenium routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     for pkg in $pkgs
     do
@@ -991,6 +999,12 @@ function buildEnv()
     JOBLOCKFILE="/tmp/mkrecon.${TARGET}.lock"
     JOBSPAUSE=0
     MAXWAIT=10080
+
+    for dir in /usr/lib/go-*
+    do
+        export GOPATH=$GOPATH:$dir
+    done
+    export GOPATH=/root/go:/usr/share/gocode:$GOPATH
 
     if ping -s1 -c1 -W 5 $TARGET >/dev/null 2>&1
     then
@@ -3682,12 +3696,6 @@ function mongoCrack()
     local dir
     local startepoch=$(date +%s)
 
-    for dir in /usr/lib/go-*
-    do
-        export GOPATH=$GOPATH:$dir
-    done
-    export GOPATH=$GOPATH:/usr/share/gocode
-
     if ! goGit https://github.com/averagesecurityguy/krkr /tmp/krkr
     then
         echo "Failed to clone git in ${FUNCNAME[0]}"
@@ -4371,13 +4379,13 @@ function cassandraScan()
         return 1
     fi
 
-    for passwd in cassandra casadmin $(cat $RECONDIR/tmp/passwds.lst)
+    for user in cassandra casadmin
     do
-        for user in cassandra casadmin
+        for passwd in cassandra casadmin $(cat $RECONDIR/tmp/passwds.lst)
         do
             echo "$BORDER" >> "$RECONDIR"/${TARGET}.$port.cassandra
-            echo "# Trying cassandra and $passwd" >> "$RECONDIR"/${TARGET}.$port.cassandra
-            /tmp/cassandra/bin/cqlsh -u $user -p $passwd -e 'LIST USERS;LIST PERMISSIONS;LIST ROLES;DESCRIBE CLUSTER;DESCRIBE KEYSPACES;DESCRIBE TABLES; DESCRIBE FULL SCHEMA;DESCRIBE TABLES;' ${TARGET} $port >> "$RECONDIR"/${TARGET}.$port.cassandra 2>&1
+            echo "# Trying $user and $passwd" >> "$RECONDIR"/${TARGET}.$port.cassandra
+            /tmp/cassandra/bin/cqlsh -u $user -p $passwd -e 'select * from system_auth.credentials; select * from system_auth.roles;LIST USERS;LIST PERMISSIONS;LIST ROLES;DESCRIBE CLUSTER;DESCRIBE KEYSPACES;DESCRIBE TABLES; DESCRIBE FULL SCHEMA;DESCRIBE TABLES;' ${TARGET} $port >> "$RECONDIR"/${TARGET}.$port.cassandra 2>&1
         done
 
         if grep -q Keyspace "$RECONDIR"/${TARGET}.$port.cassandra
@@ -4417,6 +4425,35 @@ function wapitiScan()
     jobunlock ${FUNCNAME[0]}
     printexitstats "${FUNCNAME[0]}" "$startepoch"
     return 0
+}
+################################################################################
+
+################################################################################
+function rtspScan()
+{
+    joblock ${FUNCNAME[0]}
+
+    local port=$1
+    local GOPATH=/root/go
+    local GOROOT=/root/go
+
+    if [[ ! -f /root/go/bin/cameradar ]]
+    then 
+        go get github.com/Ullaakut/cameradar
+        cd $GOPATH/src/github.com/Ullaakut/cameradar
+        dep ensure
+        cd $GOPATH/src/github.com/Ullaakut/cameradar/cameradar
+        go install
+    fi   
+
+    /root/go/bin/cameradar -p $port -t $TARGET -T 9000 -s 3 -o "$RECONDIR"/tmp/cameradar_scan-${TARGET}.xml \
+        > "$RECONDIR"/${TARGET}.${port}.cameradar 2>&1 
+
+    echo "$BORDER" >> "$RECONDIR"/${TARGET}.${port}.cameradar
+    echo "If anything found, try to get a screenshot with: ffmpeg -y -i rtsp://user:password@${TARGET}:${port}/path -vframes 1 /tmp/snapshot.jpg" >> "$RECONDIR"/${TARGET}.${port}.cameradar
+
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
 }
 ################################################################################
 

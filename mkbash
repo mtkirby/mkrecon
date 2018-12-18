@@ -10,6 +10,7 @@ alias mv="mv -v"
 alias rm="rm -v"
 alias cp="cp -v"
 alias ls='ls -FAb'
+ls --help 2>&1 |grep -q BusyBox && alias ls='ls -Fa --color=never'
 alias ll='ls -Fl'
 alias l='ls -1'
 alias lsl='ls -1'
@@ -69,6 +70,10 @@ function mkprobe()
     sudo -l
 
     echo "##################################################" 
+    echo "# egrep --color=never -v '^#|^$' /etc/sudoers /etc/sudoers.d/* 2>/dev/null"
+    egrep --color=never -v '^#|^$' /etc/sudoers /etc/sudoers.d/* 2>/dev/null
+
+    echo "##################################################" 
     echo "# LOCAL USER HOMES/FILES"
     for i in $(cat /etc/passwd|cut -d':' -f6|sort|uniq)
     do 
@@ -98,6 +103,10 @@ function mkprobe()
     echo "##################################################" 
     echo "# NETSTAT -PEANUT LISTENERS"
     netstat -peanut 2>/dev/null |grep LISTEN || netstat -an |grep LISTEN
+
+    echo "##################################################" 
+    echo "# egrep --color=never -v '^#|^$' /etc/cron.d/* /etc/crontab /var/spool/cron/* /var/spool/cron/*/* 2>/dev/null"
+    egrep --color=never -v '^#|^$' /etc/cron.d/* /etc/crontab /var/spool/cron/* /var/spool/cron/*/* 2>/dev/null
 
     echo "##################################################" 
     echo "# DF -A"
@@ -142,6 +151,11 @@ function mkprobe()
     echo "##################################################" 
     echo "# MYSQL USER DB FILES"
     find /var/lib/mysql -type f -iname '*user*' -exec ls -ld {} \; 2>/dev/null
+    for file in $(find /var/lib/mysql -type f -iname 'user.MYD')
+    do
+        echo "HASHES FROM $file"
+        strings -a "$file"
+    done
 
     echo "##################################################" 
     echo "# IPTABLES-SAVE"
@@ -154,8 +168,7 @@ function mkprobe()
     echo "##################################################" 
     echo "# FIND PASSW FILES"
     echo "# OUTPUT TO /tmp/passwfiles"
-    find /var /opt /usr -type f -iname '*passw*' 2>/dev/null |egrep -v '/usr/share/|/usr/include|/usr/sbin|/usr/bin' >>/tmp/passwfiles 2>&1
-    find /etc -type f -iname '*passw*' >>/tmp/passwfiles 2>/dev/null
+    find /etc /var /opt /usr -type f -iname '*passw*' 2>/dev/null |egrep -v '/usr/share/|/usr/include|/usr/sbin|/usr/bin|.pyc$|.html$|.so$' >>/tmp/passwfiles 2>&1
 
     echo "##################################################" 
     echo "# PASSW IN /ETC FILES"
@@ -186,6 +199,13 @@ function mkprobe()
     done
 }
 
+function dumpRpmCVEs()
+{
+    if which rpm >/dev/null 2>&1
+    then
+        rpm -qa --changelog |grep 'CVE-'|sed -e 's/ /\n/g' |sed -e 's/,/\n/g'|grep 'CVE-' |sed -e 's/.*\(CVE-[0-9]*-[0-9]*\).*/\1/g' |sort -u > /tmp/RPMCVEs
+    fi
+}
 
 function dumpPackages()
 {
@@ -243,3 +263,67 @@ function dumpPackages()
         echo "Found packages.  Now copy /tmp/searchsploit to attack host and run localsearchsploit"
     fi
 }
+
+# This function finds files that do not belong to packages.
+# It should show files that are created by the admin(s) that may be interesting
+function nonpkgcheck()
+{
+    local IFS=$'\n'
+    declare -A pkgfiles
+    local pkg
+    local dir
+    local file
+
+    dirs=(/etc /bin /sbin /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin)
+
+    if which rpm >/dev/null 2>&1
+    then
+        for pkg in $(rpm -qa 2>/dev/null)
+        do
+            for file in $(rpm -qil "$pkg" |egrep '^/etc/|^/bin/|^/sbin/|^/usr/bin/|^/usr/sbin/|^/usr/local/bin/|^/usr/local/sbin/' )
+            do
+                pkgfiles["${file##*/}"]=1
+            done
+        done
+    fi
+
+    if which dpkg >/dev/null 2>&1
+    then
+        for pkg in $(dpkg -l |awk '/^[phuri]/ {print $2}' 2>/dev/null)
+        do
+            for file in $(dpkg -L "$pkg" |egrep '^/etc/|^/bin/|^/sbin/|^/usr/bin/|^/usr/sbin/|^/usr/local/bin/|^/usr/local/sbin/' )
+            do
+                pkgfiles["${file##*/}"]=1
+            done
+        done
+    fi
+
+    if which apk >/dev/null 2>&1
+    then
+        for pkg in $(apk info)
+        do
+            for file in $(apk info -L "$pkg" |egrep '^etc|^bin/|^sbin/|^usr/bin/|^usr/sbin/|^usr/local/bin/|/usr/local/sbin/' )
+            do
+                pkgfiles["${file##*/}"]=1
+            done
+        done
+    fi
+
+    for dir in "${dirs[@]}"
+    do
+        for file in "$dir"/*
+        do
+            file=$(readlink -f "$file")
+            if [[ -f "$file" ]] \
+            && [[ ! ${pkgfiles["${file##*/}"]} == 1 ]] \
+            && [[ ! "$file" =~ /etc/alternatives ]] \
+            && ! rpm -qif "$file" >/dev/null 2>&1 \
+            && ! dpkg -S "$file" >/dev/null 2>&1
+            then
+                'ls' -l "$file"
+            fi
+        done
+    done
+
+}
+

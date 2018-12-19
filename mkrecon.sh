@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20181217
+# version 20181218
 
 umask 077
 
@@ -525,7 +525,7 @@ function MAIN()
     
             # elasticsearch
             if [[ $protocol == 'tcp' ]] \
-            && [[ $version == 'Elasticsearch' ]] 
+            && [[ $version =~ Elasticsearch ]] 
             then
                 echo "starting elasticsearchScan for port $port"
                 echo "... outputs $RECONDIR/${TARGET}.$port.elasticsearch.indexes"
@@ -2698,12 +2698,7 @@ function webDiscover()
             >> "$RECONDIR"/tmp/${TARGET}.spider.raw 2>/dev/null
         ((urlcount++))
         urlcountperc=$(echo $(( (urlcount * 100 ) / urlcounttotal )))
-        if [[ $urlcountperc -ge 23 ]] \
-        && [[ $urlcountperc -le 27 ]] \
-        || [[ $urlcountperc -ge 47 ]] \
-        && [[ $urlcountperc -le 53 ]] \
-        || [[ $urlcountperc -ge 73 ]] \
-        && [[ $urlcountperc -le 77 ]]
+        if [[ $(( urlcountperc % 5 )) == 0 ]]
         then
             echo "Spider is $(( (urlcount * 100 ) / urlcounttotal ))% done"
         fi

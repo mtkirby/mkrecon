@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20181218
+# version 20190101
 
 umask 077
 
@@ -971,22 +971,6 @@ function joinBy()
 ################################################################################
 function buildEnv()
 {
-    local file
-    local pkg
-    local icdir
-    local testdir
-    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git go-dep golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libmysql-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-asn1crypto python-openssl python-pyasn1 python-pyasn1-modules python-qt4reactor python-rdpy python-rsa python-twisted python-twisted-bin python-twisted-web python3-asn1crypto python3-openssl python3-pyasn1 python3-pyasn1-modules python3-rsa python3-twisted python3-twisted-bin python-pip python-rdpy python-selenium python3-selenium routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
-
-    for pkg in $pkgs
-    do
-        if ! dpkg -s $pkg >/dev/null 2>&1
-        then
-            echo "FAILED: missing apps."
-            echo "run: apt-get update; apt-get upgrade -y; apt-get install -y $pkgs"
-            return 1
-        fi
-    done
-
     local rawtty=$(tty)
     TTY=${rawtty#*/*/}
     BORDER='################################################################################' 
@@ -999,6 +983,31 @@ function buildEnv()
     JOBLOCKFILE="/tmp/mkrecon.${TARGET}.lock"
     JOBSPAUSE=0
     MAXWAIT=10080
+
+    local file
+    local pkg
+    local icdir
+    local testdir
+    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git go-dep golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-asn1crypto python-openssl python-pyasn1 python-pyasn1-modules python-qt4reactor python-rdpy python-rsa python-twisted python-twisted-bin python-twisted-web python3-asn1crypto python3-openssl python3-pyasn1 python3-pyasn1-modules python3-rsa python3-twisted python3-twisted-bin python-pip python-rdpy python-selenium python3-selenium routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
+
+    if ! dpkg -s mysql-connector-java >/dev/null 2>&1
+    then
+        echo "$BORDER"
+        echo "WARNING: You must install the mysql-connector-java from https://dev.mysql.com/downloads/connector/j/"
+        echo "$BORDER"
+    fi
+
+    for pkg in $pkgs
+    do
+        if ! dpkg -s $pkg >/dev/null 2>&1
+        then
+            echo "$BORDER"
+            echo "FAILED: missing apps."
+            echo "run: apt-get update; apt-get upgrade -y; apt-get install -y $pkgs"
+            echo "$BORDER"
+            return 1
+        fi
+    done
 
     for dir in /usr/lib/go-*
     do
@@ -1151,6 +1160,9 @@ function buildEnv()
         |sort -u \
         > "$RECONDIR"/tmp/defaultoracleuserpass.nmap
 
+    echo '.bashrc' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.bash_profile' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.profile' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.cvspass' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.Xauthority' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.vnc/passwd' >> "$RECONDIR"/tmp/mkrweb.txt
@@ -1160,6 +1172,7 @@ function buildEnv()
     echo '.ssh/id_rsa' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.ssh/id_dsa' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.ssh/id_ecdsa' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.ssh/known_hosts' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.git' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.gitconfig' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.wget-hsts' >> "$RECONDIR"/tmp/mkrweb.txt
@@ -1167,11 +1180,9 @@ function buildEnv()
     echo '.dropbox' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.rsyncpw' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.k5login' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo 'keystore.jks' >> "$RECONDIR"/tmp/mkrweb.txt
     echo 'security.txt' >> "$RECONDIR"/tmp/mkrweb.txt
     echo 'dashboard' >> "$RECONDIR"/tmp/mkrweb.txt
-    echo 'xvwa' >> "$RECONDIR"/tmp/mkrweb.txt
-    echo 'Labs' >> "$RECONDIR"/tmp/mkrweb.txt
-    echo 'unsafebank' >> "$RECONDIR"/tmp/mkrweb.txt
     echo 'webalizer' >> "$RECONDIR"/tmp/mkrweb.txt
     echo 'wls-wsat/RegistrationPortTypeRPC' >> "$RECONDIR"/tmp/mkrweb.txt
     echo 'wls-wsat/ParticipantPortType' >> "$RECONDIR"/tmp/mkrweb.txt

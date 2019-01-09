@@ -3479,7 +3479,7 @@ function getPortFromUrl()
     local url=$1
     local port
 
-    port=$(echo $url |cut -d':' -f3)
+    port=$(echo $url |cut -d':' -f3 |cut -d'/' -f1 |cut -d'?' -f1)
     if [[ ! $port =~ ^[[:digit:]]+$ ]]
     then 
         if echo $url |grep -q "^https"

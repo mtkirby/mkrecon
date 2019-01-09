@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20190101
+# version 20190108
 
 umask 077
 
@@ -993,7 +993,7 @@ function buildEnv()
     if ! dpkg -s mysql-connector-java >/dev/null 2>&1
     then
         echo "$BORDER"
-        echo "WARNING: You must install the mysql-connector-java from https://dev.mysql.com/downloads/connector/j/"
+        echo "WARNING: You should install the mysql-connector-java from https://dev.mysql.com/downloads/connector/j/"
         echo "$BORDER"
     fi
 
@@ -1555,8 +1555,7 @@ function nmapScan()
     local startepoch=$(date +%s)
     # other udp ports: U:111,123,12444,1258,13,13200,1604,161,17185,17555,177,1900,20110,20510,2126,2302,23196,26000,27138,27244,27777,27950,28138,30710,3123,31337,3478,3671,37,3702,3784,389,44818,4569,47808,49160,49161,49162,500,5060,53,5351,5353,5683,623,636,64738,6481,67,69,8611,8612,8767,88,9100,9600 
     nmap -Pn --open -T3 -sT -sU -p T:1-65535,U:67,68,69,111,123,161,500,53,623,5353,1813,4500,177,5060,5269 \
-        --script=version -sV --version-all -O \
-        --script-args http.useragent="$USERAGENT" \
+        -A --version-all --script-args http.useragent="$USERAGENT" \
         -oN "$RECONDIR"/${TARGET}.nmap \
         -oG "$RECONDIR"/${TARGET}.ngrep \
         -oX "$RECONDIR"/${TARGET}.xml \
@@ -3480,9 +3479,9 @@ function getPortFromUrl()
     local url=$1
     local port
 
-    port=$(echo $url|sed -e 's/.*:\([[:digit:]]*\)\/.*/\1/')
-    if ! echo $port |egrep -q "^[[:digit:]]+$"
-    then
+    port=$(echo $url |cut -d':' -f3)
+    if [[ ! $port =~ ^[[:digit:]]+$ ]]
+    then 
         if echo $url |grep -q "^https"
         then
             port=443

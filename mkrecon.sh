@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20190108
+# version 20190213
 
 umask 077
 
@@ -328,6 +328,15 @@ function MAIN()
                 echo "starting cassandraScan $port"
                 echo "... outputs $RECONDIR/${TARGET}.$port.cassandra"
                 cassandraScan $port &
+            fi
+    
+            # rabbitmq
+            if [[ $protocol == 'tcp' ]] \
+            && [[ $version =~ 'MochiWeb' ]]
+            then
+                echo "starting rabbitmqScan $port"
+                echo "... outputs $RECONDIR/${TARGET}.$port.rabbitmq"
+                rabbitmqScan $port &
             fi
     
             # vnc
@@ -749,6 +758,7 @@ function MAIN()
         echo "starting msfRMIScan"
         echo "... outputs $RECONDIR/${TARGET}.rmi.msf"
         msfRMIScan &
+        jmxspider &
     fi
 
     if [[ $ciscoflag == 1 ]]
@@ -1752,6 +1762,54 @@ function rshBrute()
 
     jobunlock ${FUNCNAME[0]}
     printexitstats "${FUNCNAME[0]}" "$startepoch"
+    return 0
+}
+################################################################################
+
+################################################################################
+function rabbitmqScan()
+{
+    joblock ${FUNCNAME[0]}
+
+    local port=$1
+    local path
+    local startepoch=$(date +%s)
+
+    for path in /api/overview \
+        /api/cluster-name \
+        /api/nodes \
+        /api/extensions \
+        /api/definitions \
+        /api/connections \
+        /api/vhosts \
+        /api/channels \
+        /api/consumers \
+        /api/exchanges \
+        /api/queues \
+        /api/bindings \
+        /api/vhosts \
+        /api/users \
+        /api/whoami \
+        /api/permissions \
+        /api/parameters \
+        /api/global-parameters \
+        /api/policies \
+        /api/healthchecks/node 
+    do
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.${port}.rabbitmq
+        echo "# $path" >> "$RECONDIR"/${TARGET}.${port}.rabbitmq
+
+        timeout --kill-after=10 --foreground 300 \
+            curl -s -i -u guest:guest "http://${TARGET}:${port}${path}" 2>/dev/null \
+                |strings -a \
+                |egrep '^\[|^\{' \
+                |jq -M . \
+                >> "$RECONDIR"/${TARGET}.${port}.rabbitmq 2>&1
+        echo "$BORDER" >> "$RECONDIR"/${TARGET}.${port}.rabbitmq
+    done
+
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]} $port" "$startepoch"
     return 0
 }
 ################################################################################
@@ -3919,6 +3977,55 @@ function ipmiScan()
 ################################################################################
 
 ################################################################################
+function jmxspider()
+{
+    joblock ${FUNCNAME[0]}
+
+    local port
+    local startepoch=$(date +%s)
+    local domain
+    local bean
+
+    if [[ ! -f "/tmp/jmxterm-1.0.0-uber.jar" ]]
+    then
+        if ! wget -o /tmp/jmxterm-1.0.0-uber.jar https://github.com/jiaqi/jmxterm/releases/download/v1.0.0/jmxterm-1.0.0-uber.jar >/dev/null 2>&1
+        then
+            echo "FAILURE in ${FUNCNAME[0]}: Could not retrieve jmxterm"
+            return 1
+        fi
+    fi
+
+    if ! echo 'domains' |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} >/dev/null 2>&1
+    then
+        return 1
+    fi
+
+    for port in ${RMIPORTS[@]}
+    do
+        rm -f "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript >/dev/null 2>&1
+        for domain in $(echo 'domains' \
+            |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} 2>&1 \
+            |egrep -v '^\$|^#|^Welcome to JMX terminal' )
+        do
+            for bean in $(echo -e "domain $domain\nbeans" \
+                |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} 2>&1 \
+                |egrep -v '^\$|^#|^Welcome to JMX terminal' )
+            do
+                echo "get -n -d $domain -b $bean *" >> "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript
+            done
+        done
+    
+        java -jar /tmp/jmxterm-1.0.0-uber.jar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript -l ${TARGET}:${port} \
+        > "$RECONDIR"/${TARGET}.${port}.jmxspider 2>&1
+    done
+
+    jobunlock ${FUNCNAME[0]}
+    printexitstats "${FUNCNAME[0]}" "$startepoch"
+    return 0
+}
+################################################################################
+
+################################################################################
 function msfRMIScan()
 {
     joblock ${FUNCNAME[0]}
@@ -3929,7 +4036,7 @@ function msfRMIScan()
     local startepoch=$(date +%s)
 
     echo "color false" > $cmdfile
-    for msfscan in auxiliary/gather/java_rmi_registry auxiliary/scanner/misc/java_rmi_server
+    for msfscan in auxiliary/gather/java_rmi_registry auxiliary/scanner/misc/java_rmi_server scanner/misc/java_jmx_server
     do
         for port in ${RMIPORTS[@]}
         do

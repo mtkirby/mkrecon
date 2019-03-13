@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20190213
+# version 20190310
 
 umask 077
 
@@ -1565,7 +1565,7 @@ function nmapScan()
     local startepoch=$(date +%s)
     # other udp ports: U:111,123,12444,1258,13,13200,1604,161,17185,17555,177,1900,20110,20510,2126,2302,23196,26000,27138,27244,27777,27950,28138,30710,3123,31337,3478,3671,37,3702,3784,389,44818,4569,47808,49160,49161,49162,500,5060,53,5351,5353,5683,623,636,64738,6481,67,69,8611,8612,8767,88,9100,9600 
     nmap -Pn --open -T3 -sT -sU -p T:1-65535,U:67,68,69,111,123,161,500,53,623,5353,1813,4500,177,5060,5269 \
-        -A --version-all --script-args http.useragent="$USERAGENT" \
+        -sV --version-all --script-args http.useragent="$USERAGENT" \
         -oN "$RECONDIR"/${TARGET}.nmap \
         -oG "$RECONDIR"/${TARGET}.ngrep \
         -oX "$RECONDIR"/${TARGET}.xml \
@@ -1998,7 +1998,7 @@ function dnsScan()
 
     # pull discovered domains from arpa files
     egrep "IN\s+NS\s" "$RECONDIR"/${TARGET}.arpas/*.arpa. \
-		|awk '{print $5}'|cut -d'.' -f2-  |sort -u \
+        |awk '{print $5}'|cut -d'.' -f2-  |sort -u \
         > "$RECONDIR"/${TARGET}.domains 2>&1
     for domain in $(cat "$RECONDIR"/${TARGET}.domains)
     do
@@ -2010,8 +2010,8 @@ function dnsScan()
     for arpa in $(cat "$RECONDIR"/${TARGET}.arpas/*.in-addr.arpa. 2>/dev/null \
         |egrep "\s+IN\s+SOA\s" |awk '{print $1}' |sed -e 's/.in-addr.arpa.*//g' |sort -u)
     do
-        IFS='.' subnet=($arpa)
-        IFS=$'\n'
+        local IFS='.' subnet=($arpa)
+        local IFS=$'\n'
         if [[ ${#subnet[@]} -eq 2 ]]
         then
             timeout --kill-after=10 --foreground 1800 \
@@ -2612,7 +2612,7 @@ function webDiscover()
     local wordlist
     local urlfile
     local startepoch=$(date +%s)
-    IFS=$'\n'
+    local IFS=$'\n'
 
     ################################################################################
     # Build dirb dictionary array
@@ -3272,7 +3272,7 @@ function wfuzzURLs()
     sort -u "$RECONDIR"/tmp/${TARGET}.FUZZ.raw.login 2>/dev/null |grep "$TARGET" \
         > "$RECONDIR"/tmp/${TARGET}.FUZZ.login
 
-    IFS=$'\n'
+    local IFS=$'\n'
     i=0
     for line in $(cat "$RECONDIR"/tmp/${TARGET}.FUZZ.login 2>/dev/null)
     do
@@ -3288,7 +3288,7 @@ function wfuzzURLs()
         let i++
     done
 
-    IFS=$'\n'
+    local IFS=$'\n'
     i=0
     for line in $(cat "$RECONDIR"/tmp/${TARGET}.FUZZ 2>/dev/null)
     do
@@ -3356,7 +3356,7 @@ function wfuzzURLs()
         # This will compact the html so we can use the ignore feature.
         if egrep -q '^<td>[[:space:]]*[[:digit:]]+L</td>$' "$file"
         then
-            IFS=$'\n'
+            local IFS=$'\n'
             inside=0
             row=()
             for line in $(cat "$file")
@@ -3981,10 +3981,12 @@ function jmxspider()
 {
     joblock ${FUNCNAME[0]}
 
-    local port
     local startepoch=$(date +%s)
-    local domain
+    local port=$1
     local bean
+    local attrib
+    local line
+    local IFS=$'\n'
 
     if [[ ! -f "/tmp/jmxterm-1.0.0-uber.jar" ]]
     then
@@ -3995,28 +3997,43 @@ function jmxspider()
         fi
     fi
 
-    if ! echo 'domains' |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} >/dev/null 2>&1
-    then
-        return 1
-    fi
-
     for port in ${RMIPORTS[@]}
     do
+        if ! echo 'domains' |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} >/dev/null 2>&1
+        then
+            continue
+        fi
+
         rm -f "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript >/dev/null 2>&1
-        for domain in $(echo 'domains' \
+        rm -f "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs >/dev/null 2>&1
+        rm -f "$RECONDIR"/tmp/${TARGET}.${port}.jmxattribs >/dev/null 2>&1
+    
+        for bean in $(echo 'beans -d *' \
             |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} 2>&1 \
             |egrep -v '^\$|^#|^Welcome to JMX terminal' )
         do
-            for bean in $(echo -e "domain $domain\nbeans" \
-                |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} 2>&1 \
-                |egrep -v '^\$|^#|^Welcome to JMX terminal' )
-            do
-                echo "get -n -d $domain -b $bean *" >> "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript
-            done
+            echo "info -b $bean -t a" >> "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs
         done
     
-        java -jar /tmp/jmxterm-1.0.0-uber.jar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript -l ${TARGET}:${port} \
-        > "$RECONDIR"/${TARGET}.${port}.jmxspider 2>&1
+        java -jar jmxterm-1.0.0-uber.jar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs -l ${TARGET}:${port} 2>&1 \
+            |egrep -v '^\$|^Welcome to JMX terminal' \
+            > "$RECONDIR"/tmp/${TARGET}.${port}.jmxattribs
+    
+        for line in $(cat "$RECONDIR"/tmp/${TARGET}.${port}.jmxattribs)
+        do
+            if [[ $line =~ ^#mbean ]]
+            then
+                bean=$(echo $line |awk '{print $3}')
+            fi
+            if [[ $line =~ %[[:digit:]] ]]
+            then
+                attrib=$(echo $line |awk '{print $3}')
+                echo "get -n -b $bean $attrib" >> "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript
+            fi
+        done
+    
+        java -jar jmxterm-1.0.0-uber.jar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript -l ${TARGET}:${port} \
+            > "$RECONDIR"/${TARGET}.${port}.jmxspider 2>&1
     done
 
     jobunlock ${FUNCNAME[0]}
@@ -4093,7 +4110,7 @@ function msfHttpScan()
 
     echo "color false" > $cmdfile
 
-    IFS=$'\n'
+    local IFS=$'\n'
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
         if [[ $url =~ ^https ]]

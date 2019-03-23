@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20190310
+# version 20190319
 
 umask 077
 
@@ -1170,6 +1170,8 @@ function buildEnv()
         |sort -u \
         > "$RECONDIR"/tmp/defaultoracleuserpass.nmap
 
+    echo '.aws/config' >> "$RECONDIR"/tmp/mkrweb.txt
+    echo '.aws/credentials' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.bashrc' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.bash_profile' >> "$RECONDIR"/tmp/mkrweb.txt
     echo '.profile' >> "$RECONDIR"/tmp/mkrweb.txt

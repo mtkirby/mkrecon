@@ -51,8 +51,12 @@ WHAT MKRECON DOES
 - show iscsi info
 - retrieve ike keys and try to crack them with rockyou dictionary.
 - retrieve ipmi password hashes and try to crack them with rockyou dictionary.
-- show ldap info
-- show memcached info
+- show LDAP info
+- show Memcached info
+- show RabbitMQ info
+- show Cassandra info
+- show Java JMX info
+- discover IP cameras
 - try to retrieve Java RMI data
 - run HP metasploit modules if HP discovered
 - run SAP metasploit modules if SAP discovered

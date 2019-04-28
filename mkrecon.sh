@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20190319
+# version 20190428
 
 umask 077
 
@@ -881,9 +881,11 @@ function pingPause()
     # Run up to 3 pings to check if target is still alive
     # PINGCHECK was set in buildEnv and will be 0 if target is not pingable
     if [[ $PINGCHECK == 1 ]] \
-    && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1 \
-    && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1 \
-    && ! ping -s1 -c3 -W 3 $TARGET >/dev/null 2>&1
+    && ! ping -s1 -c10 -W 30 $TARGET >/dev/null 2>&1 \
+    && ! ping -s1 -c10 -W 30 $TARGET >/dev/null 2>&1 \
+    && ! ping -s1 -c10 -W 30 $TARGET >/dev/null 2>&1 \
+    && ! ping -s1 -c10 -W 30 $TARGET >/dev/null 2>&1 \
+    && ! ping -s1 -c10 -W 30 $TARGET >/dev/null 2>&1
     then
         echo "UNABLE TO PING $TARGET.  PAUSING JOBS"
         echo "REMOVE $JOBSPAUSEFILE and run 'kill -SIGCONT $$' TO RESUME"
@@ -998,6 +1000,8 @@ function buildEnv()
     local pkg
     local icdir
     local testdir
+    local hydrasize
+    local mkhydrasize
     local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git go-dep golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-asn1crypto python-openssl python-pyasn1 python-pyasn1-modules python-qt4reactor python-rdpy python-rsa python-twisted python-twisted-bin python-twisted-web python3-asn1crypto python3-openssl python3-pyasn1 python3-pyasn1-modules python3-rsa python3-twisted python3-twisted-bin python-pip python-rdpy python-selenium python3-selenium routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     if ! dpkg -s mysql-connector-java >/dev/null 2>&1
@@ -1070,7 +1074,10 @@ function buildEnv()
     fi
 
     # Remove hydra signature in a new copy of hydra.  Avoid IDS/IPS.
-    if [[ ! -f "/usr/bin/hydra.mkrecon" ]]
+    hydrasize=$(stat -c "%s" /bin/hydra 2>/dev/null)
+    mkhydrasize=$(stat -c "%s" /bin/hydra.mkrecon 2>/dev/null)
+    if [[ ! -f "/usr/bin/hydra.mkrecon" ]] \
+    || [[ "$hydrasize" != "$mkhydrasize" ]]
     then
         cp -f /usr/bin/hydra /usr/bin/hydra.mkrecon >/dev/null 2>&1
         perl -pi -e 's|Mozilla/4.0 \(Hydra\)|Mozilla/5.0 (hello)|g' /usr/bin/hydra.mkrecon >/dev/null 2>&1

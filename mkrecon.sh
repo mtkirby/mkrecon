@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20190428
+# version 20190604
 
 umask 077
 
@@ -63,6 +63,7 @@ function MAIN()
     echo "# If you want to increase the number of active jobs, edit $JOBSLIMITFILE"
     echo "# To pause new jobs, touch $JOBSPAUSEFILE"
     echo "# To pause mkrecon, run kill -SIGSTOP $$"
+    echo "# If you get a shell, try running https://github.com/vulmon/Vulmap"
     echo "$BORDER"
     
     echo "starting snmpScan"
@@ -439,7 +440,8 @@ function MAIN()
             # nmap sometimes shows mesos as "unknown", so probe for a page
             if [[ $protocol == 'tcp' ]] \
             && [[ $version =~ Mesos ]] \
-            || timeout --kill-after 10 --foreground 30 curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
+            || timeout --kill-after 10 --foreground 30 \
+                curl -A "$USERAGENT" --retry 20 --retry-connrefused -k \
                 -s http://${TARGET}:${port}/showme404 2>&1 \
                 |grep -q timestamp
             then
@@ -1379,32 +1381,34 @@ function otherNmaps()
     echo "otherNmaps is scanning ports $scanports"
 
     ( timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=ajp-brute \
+        nmap -sV --version-all -T2 -Pn -p $scanports --script=ajp-brute \
         -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET 2>&1 \
         |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ajp-brute 
     ) &
 
     ( timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=xmpp-brute \
+        nmap -sV --version-all -T2 -Pn -p $scanports --script=xmpp-brute \
         -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET 2>&1 \
         |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-xmpp-brute 
     ) &
 
     ( timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=oracle-sid-brute \
+        nmap -sV --version-all -T2 -Pn -p $scanports --script=oracle-sid-brute \
         -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET >/dev/null 2>&1 
 
         if grep -q '|' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute
         then
             for sid in $(awk '/^\|/ {print $2}' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute |grep -v oracle-sid-brute)
             do
-                timeout --kill-after=10 --foreground 7200 nmap -T2 -Pn -p $scanports \
+                timeout --kill-after=10 --foreground 7200 \
+                    nmap -sV --version-all -T2 -Pn -p $scanports \
                     --script oracle-brute-stealth --script-args oracle-brute-stealth.sid=$sid \
                     -oN "$RECONDIR"/${TARGET}.nmap-oracle-brute-stealth.${sid} $TARGET \
                     >/dev/null 2>&1 &
-                timeout --kill-after=10 --foreground 7200 nmap -T2 -Pn -p $scanports \
+                timeout --kill-after=10 --foreground 7200 \
+                    nmap -sV --version-all -T2 -Pn -p $scanports \
                     --script oracle-enum-users \
                     --script-args oracle-enum-users.sid=$sid,userdb=$RECONDIR/tmp/users.lst \
                     -oN "$RECONDIR"/${TARGET}.nmap-oracle-enum-users.${sid} $TARGET \
@@ -1416,7 +1420,7 @@ function otherNmaps()
     ) &
 
     ( timeout --kill-after=10 --foreground 172800 \
-        nmap -T3 -Pn -sU -p 623 --script ipmi-brute \
+        nmap -sV --version-all -T3 -Pn -sU -p 623 --script ipmi-brute \
         -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET 2>&1 \
         |grep -q '|' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute \
@@ -1425,18 +1429,18 @@ function otherNmaps()
     ) &
 
     ( timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=auth --script-args http.useragent="$USERAGENT" \
+        nmap -sV --version-all -T2 -Pn -p $scanports --script=auth --script-args http.useragent="$USERAGENT" \
         -oN "$RECONDIR"/${TARGET}.nmap-auth $TARGET >/dev/null 2>&1
     ) &
 
     ( timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=exploit,vuln \
+        nmap -sV --version-all -T2 -Pn -p $scanports --script=exploit,vuln \
         --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-exploitvuln \
         $TARGET >/dev/null 2>&1
     ) &
 
     ( timeout --kill-after=10 --foreground 172800 \
-        nmap -T2 -Pn -p $scanports --script=discovery,safe \
+        nmap -sV --version-all -T2 -Pn -p $scanports --script=discovery,safe \
         --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe \
         $TARGET >/dev/null 2>&1
     ) &
@@ -1548,7 +1552,7 @@ function snmpScan()
         |sort -u \
         >"$RECONDIR"/tmp/snmp.txt
 
-    nmap -Pn -T1 -p 161 -sU --script snmp-brute $TARGET --script-args snmp-brute.communitiesdb="$RECONDIR"/tmp/snmp.txt -oN "$RECONDIR"/${TARGET}.nmap.snmp-brute >/dev/null 2>&1
+    nmap -sV --version-all -Pn -T1 -p 161 -sU --script snmp-brute $TARGET --script-args snmp-brute.communitiesdb="$RECONDIR"/tmp/snmp.txt -oN "$RECONDIR"/${TARGET}.nmap.snmp-brute >/dev/null 2>&1
     
     if grep -q 'Valid credentials' "$RECONDIR"/${TARGET}.nmap.snmp-brute 2>/dev/null
     then
@@ -1875,7 +1879,7 @@ function nfsScan()
     # the nfs-ls nse script only works half the time
     for i in {1..10}
     do
-        output=$(timeout --kill-after=10 --foreground 300 nmap -T2 -Pn -p 111 --script=nfs-ls $TARGET 2>&1)
+        output=$(timeout --kill-after=10 --foreground 300 nmap -sV --verion-all -T2 -Pn -p 111 --script=nfs-ls $TARGET 2>&1)
         if echo $output|grep -q nfs-ls:
         then
             echo "$output" > "$RECONDIR"/${TARGET}.nmap-nfsls
@@ -3084,7 +3088,7 @@ function sqlmapScan()
             |tail -n +7 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
-            |egrep -v '^\[\?|\[.*;' \
+            |egrep -v '^\[\?|\[.*;|current status:' \
             >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 
         echo $BORDER >> "$RECONDIR"/tmp/${TARGET}.sqlmap.raw 
 
@@ -3479,8 +3483,8 @@ function davScanURLs()
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.cadaver 
 
         port=$(getPortFromUrl "$url")
-        output=$(timeout --kill-after=10 --foreground 90 nmap -T2 -p $port -Pn \
-            --script http-webdav-scan \
+        output=$(timeout --kill-after=10 --foreground 90 \
+            nmap -sV --verion-all -T2 -p $port -Pn --script http-webdav-scan \
             --script-args "http-webdav-scan.path=/${url#*/*/*/}" \
             ${TARGET} 2>&1 )
         if echo $output |grep -q http-webdav-scan:
@@ -4511,7 +4515,7 @@ function cassandraScan()
     local user
     local startepoch=$(date +%s)
 
-    if ! goGit http://git-wip-us.apache.org/repos/asf/cassandra.git /tmp/cassandra
+    if ! goGit https://git-wip-us.apache.org/repos/asf/cassandra.git /tmp/cassandra
     then
         echo "Failed to clone git in ${FUNCNAME[0]}"
         return 1

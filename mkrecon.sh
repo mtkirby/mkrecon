@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20190604
+# version 20190606
 
 umask 077
 
@@ -57,7 +57,7 @@ function MAIN()
     cd "$RECONDIR" || exit 1
 
     echo "$BORDER"
-    echo "# mkrecon may take anywhere between a few minutes to upto 1 week depending on services."
+    echo "# mkrecon may take anywhere between a few minutes to upto a couple weeks depending on services."
     echo "# Some tasks are backgrounded, depending on network impact."
     echo "# Jobs limit is set to $JOBSLIMIT"
     echo "# If you want to increase the number of active jobs, edit $JOBSLIMITFILE"
@@ -608,6 +608,55 @@ function MAIN()
     echo "... outputs $RECONDIR/${TARGET}.nmap-ipmi-brute"
     otherNmaps &
 
+    echo "starting routersploitScan"
+    echo "... outputs $RECONDIR/${TARGET}.routersploit"
+    routersploitScan &
+
+    if [[ $sshflag == 1 ]]
+    then
+        echo "starting ssh badKeyScan"
+        echo "... outputs $RECONDIR/${TARGET}.ssh.badKeys"
+        badKeyScan &
+    fi
+
+    if [[ $hpflag == 1 ]]
+    then
+        # separate HP scan from other http scans because of time
+        echo "starting msfHPScan"
+        echo "... outputs $RECONDIR/${TARGET}.hp.msf"
+        msfHPScan &
+    fi
+
+    if [[ $sapflag == 1 ]]
+    then
+        # separate SAP scan from other http scans because of time
+        echo "starting msfSapScan"
+        echo "... outputs $RECONDIR/${TARGET}.sap.msf"
+        msfSapScan &
+    fi
+
+    if [[ $rmiflag == 1 ]]
+    then
+        echo "starting msfRMIScan"
+        echo "... outputs $RECONDIR/${TARGET}.rmi.msf"
+        msfRMIScan &
+        jmxspider &
+    fi
+
+    if [[ $ciscoflag == 1 ]]
+    then
+        echo "starting msfCiscoScan"
+        echo "... outputs $RECONDIR/${TARGET}.cisco.msf"
+        msfCiscoScan &
+    fi
+
+    if [[ $juniperflag == 1 ]]
+    then
+        echo "starting msfJuniperScan"
+        echo "... outputs $RECONDIR/${TARGET}.juniper.msf"
+        msfJuniperScan &
+    fi
+
     ################################################################################
 
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
@@ -623,10 +672,6 @@ function MAIN()
         echo "starting msfHttpScan"
         echo "... outputs $RECONDIR/${TARGET}.http.msf"
         msfHttpScan &
-    
-        echo "starting routersploitScan"
-        echo "... outputs $RECONDIR/${TARGET}.routersploit"
-        routersploitScan &
     
         echo "starting skipfishScan"
         echo "... outputs $RECONDIR/${TARGET}.skipfish/"
@@ -732,51 +777,6 @@ function MAIN()
         exifScanURLs &
     fi
     
-    if [[ $sshflag == 1 ]]
-    then
-        echo "starting ssh badKeyScan"
-        echo "... outputs $RECONDIR/${TARGET}.ssh.badKeys"
-        badKeyScan &
-    fi
-
-    if [[ $hpflag == 1 ]]
-    then
-        # separate HP scan from other http scans because of time
-        echo "starting msfHPScan"
-        echo "... outputs $RECONDIR/${TARGET}.hp.msf"
-        msfHPScan &
-    fi
-
-    if [[ $sapflag == 1 ]]
-    then
-        # separate SAP scan from other http scans because of time
-        echo "starting msfSapScan"
-        echo "... outputs $RECONDIR/${TARGET}.sap.msf"
-        msfSapScan &
-    fi
-
-    if [[ $rmiflag == 1 ]]
-    then
-        echo "starting msfRMIScan"
-        echo "... outputs $RECONDIR/${TARGET}.rmi.msf"
-        msfRMIScan &
-        jmxspider &
-    fi
-
-    if [[ $ciscoflag == 1 ]]
-    then
-        echo "starting msfCiscoScan"
-        echo "... outputs $RECONDIR/${TARGET}.cisco.msf"
-        msfCiscoScan &
-    fi
-
-    if [[ $juniperflag == 1 ]]
-    then
-        echo "starting msfJuniperScan"
-        echo "... outputs $RECONDIR/${TARGET}.juniper.msf"
-        msfJuniperScan &
-    fi
-
     ################################################################################    
 
     waitcount=0
@@ -996,7 +996,7 @@ function buildEnv()
     JOBSPAUSEFILE="/tmp/mkrecon.${TARGET}.pause"
     JOBLOCKFILE="/tmp/mkrecon.${TARGET}.lock"
     JOBSPAUSE=0
-    MAXWAIT=10080
+    MAXWAIT=20160
 
     local file
     local pkg
@@ -1373,9 +1373,18 @@ function otherNmaps()
     local udpports
     local scanports
     local sid
+    local safenselist=()
+    local safense
+    local nse
 
-    tcpports="T:$(joinBy , "${TCPPORTS[@]}")"
-    udpports="U:$(joinBy , "${UDPPORTS[@]}")"
+    if [[ "${TCPPORTS[0]}" =~ . ]]
+    then
+        tcpports="T:$(joinBy , "${TCPPORTS[@]}")"
+    fi
+    if [[ "${UDPPORTS[0]}" =~ . ]]
+    then
+        udpports="U:$(joinBy , "${UDPPORTS[@]}")"
+    fi
     scanports=$(joinBy , $tcpports $udpports)
 
     echo "otherNmaps is scanning ports $scanports"
@@ -1440,8 +1449,21 @@ function otherNmaps()
     ) &
 
     ( timeout --kill-after=10 --foreground 172800 \
-        nmap -sV --version-all -T2 -Pn -p $scanports --script=discovery,safe \
-        --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-discoverysafe \
+        nmap -sV --version-all -T2 -Pn -p $scanports --script=discovery \
+        --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-discovery \
+        $TARGET >/dev/null 2>&1
+    ) &
+
+    # specify safe scripts to run because --script=safe does not work
+    for nse in $(egrep '^categories = .*safe' /usr/share/nmap/scripts/*.nse \
+        |cut -d':' -f1  |cut -d'/' -f6|egrep -v '^broadcast' |sed -e 's/.nse$//')
+    do 
+        safenselist[${#safenselist[@]}]=$nse
+        safense="$(joinBy , "${safenselist[@]}")"
+    done
+    ( timeout --kill-after=10 --foreground 172800 \
+        nmap -sV --version-all -T2 -Pn -p $scanports --script=$safense \
+        --script-args http.useragent="$USERAGENT" -oN "$RECONDIR"/${TARGET}.nmap-safe \
         $TARGET >/dev/null 2>&1
     ) &
     
@@ -2560,6 +2582,7 @@ function clusterdScan()
             clusterd -i $TARGET -p $port 2>&1 \
             |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
             |strings -a \
+            |egrep -v ' Checking | No fingerprints ' \
             >> "$RECONDIR"/${TARGET}.clusterd
         echo "$BORDER" >> "$RECONDIR"/${TARGET}.clusterd
     done
@@ -2588,7 +2611,7 @@ function dirbScan()
         pingPause
         ((webdictfilecount++))
         splitfile=${webdictfile##*/}
-        timeout --kill-after=10 --foreground 3600 \
+        timeout --kill-after=10 --foreground 14400 \
             dirb "$url" "$webdictfile" -a "$USERAGENT" -z $dirbdelay -w -r -f -S \
             >> "${dirboutraw}.${port}.${splitfile}" 2>&1 
         echo "dirb for $url is $(( (webdictfilecount * 100 ) / webdictfilescount ))% done"
@@ -2634,11 +2657,13 @@ function webDiscover()
         /usr/share/dirb/wordlists/vulns/*txt \
         /usr/share/wfuzz/wordlist/general/admin-panels.txt \
         /usr/share/seclists/Discovery/Web-Content/CMS/*.txt \
+        /usr/share/seclists/Discovery/Web-Content/api/common_paths.txt \
+        /usr/share/seclists/Discovery/Web-Content/SVNDigger/all-dirs.txt \
         /usr/share/seclists/Discovery/Web-Content/*.txt \
         /usr/share/seclists/Discovery/Web-Content/URLs/*.txt \
         "$RECONDIR"/tmp/mkrweb.txt 
     do
-        if [[ $wordlist =~ raft|LinuxFileList|default-web-root|big.txt|common-and|parameter|Kitchen ]]
+        if [[ $wordlist =~ raft-.*words|LinuxFileList|default-web-root|extensions|parameter ]]
         then 
             continue
         fi
@@ -2702,15 +2727,21 @@ function webDiscover()
                 >> "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null
         done
     done
+
+    # build html file from robots.txt files
+    for url in $(cat "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null|sort -u)
+    do
+        echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.robotspider.html
+    done
     ################################################################################
 
     ################################################################################
     # second run through baseurls.  dirb may take hours
     # Run dirb as concurrent background jobs, but add a delay based on number of urls.
     echo $BORDER
-    echo "# webDiscover IS STARTING DIRB WITH A MAXIMUM TIME LIMIT OF $(((3600 * webdictfilescount) / 60 / 60)) HOURS"
+    echo "# webDiscover IS STARTING DIRB WITH A MAXIMUM TIME LIMIT OF $(((14400 * webdictfilescount) / 60 / 60)) HOURS"
     echo $BORDER
-    dirbdelay=$(( $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null |wc -l) * 50 ))
+    dirbdelay=$(( $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null |wc -l) * 100 ))
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
@@ -2724,21 +2755,45 @@ function webDiscover()
     done
     echo "dirb is done"
 
-    cat "${dirboutraw}".* > "$dirboutraw" 2>&1
     ################################################################################
 
     ################################################################################
-    # build html file from robots.txt files
-    for url in $(cat "$RECONDIR"/tmp/${TARGET}.robotspider.raw 2>/dev/null|sort -u)
+    # Round 2 of dirb to search first layer of subdirs
+    echo $BORDER
+    echo "# webDiscover IS STARTING DIRB LEVEL 2, FIRST 100, WITH A MAXIMUM TIME LIMIT OF $(((14400 * webdictfilescount) / 60 / 60)) HOURS EACH THREAD"
+    echo $BORDER
+    dirbdelay=250
+    for url in $(grep CODE:200 "$dirboutraw" \
+        |egrep '://.*/.*/ ' \
+        |awk '{print $2}' \
+        |egrep -v '/%|///|/\./|/\.\.|//$|css|icons|manual|readme|help' \
+        |head -500)
     do
-        echo "<a href=\"$url\">$url</a><br>" >> "$RECONDIR"/${TARGET}.robotspider.html
+        while [[ "$(jobs 2>&1|grep -c dirbScan)" -gt 5 ]]
+        do
+            sleep 60
+        done
+
+        port=$(getPortFromUrl $url)
+        dirbScan "$dirbdelay" "$webdictfiles" "$url" "$port" "$webdictfilescount" "$dirboutraw" &
+
     done
+
+    while jobs 2>&1|grep -q dirbScan
+    do
+        wait -n $(jobs 2>&1|grep dirbScan |cut -d'[' -f2|cut -d']' -f1|head -1)
+    done
+    echo "dirb is done"
+
     ################################################################################
 
     ################################################################################
     # build dirburls file
+    cat "${dirboutraw}".* > "$dirboutraw" 2>&1
+
     for url in $(grep CODE:200 "$dirboutraw" \
         |grep -v SIZE:0 \
+        |egrep -v '/%|///|/\./|/\.\.|//$' \
         |awk '{print $2}' \
         |sort -u)
     do
@@ -4003,7 +4058,7 @@ function jmxspider()
 
     if [[ ! -f "/tmp/jmxterm-1.0.0-uber.jar" ]]
     then
-        if ! wget -o /tmp/jmxterm-1.0.0-uber.jar https://github.com/jiaqi/jmxterm/releases/download/v1.0.0/jmxterm-1.0.0-uber.jar >/dev/null 2>&1
+        if ! wget -O /tmp/jmxterm-1.0.0-uber.jar https://github.com/jiaqi/jmxterm/releases/download/v1.0.0/jmxterm-1.0.0-uber.jar >/dev/null 2>&1
         then
             echo "FAILURE in ${FUNCNAME[0]}: Could not retrieve jmxterm"
             return 1
@@ -4620,8 +4675,9 @@ function arachniScan()
         timeout --kill-after 10 --foreground 172800 \
             arachni --http-user-agent "$USERAGENT" --audit-links --audit-forms --audit-ui-forms \
             --audit-ui-inputs --audit-xmls --audit-jsons --timeout=47:30:0 --output-only-positives \
-            --http-request-concurrency=2 --report-save-path="$RECONDIR"/tmp/arachni $url \
+            --http-request-concurrency=1 --report-save-path="$RECONDIR"/tmp/arachni $url \
             >"$RECONDIR"/tmp/arachni.$count.out 2>&1 &
+        sleep 600
     done
 
     while jobs 2>&1|grep -q 'arachni'
@@ -4922,6 +4978,7 @@ set > /tmp/set1
 trap exitNow INT
 
 export PYTHONHTTPSVERIFY=0
+export PYTHONWARNINGS="ignore:Unverified HTTPS request"
 export PERL_LWP_SSL_VERIFY_HOSTNAME=0
 shopt -s nocasematch
 renice 5 $$ >/dev/null 2>&1

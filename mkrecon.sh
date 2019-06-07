@@ -2611,10 +2611,10 @@ function dirbScan()
         pingPause
         ((webdictfilecount++))
         splitfile=${webdictfile##*/}
-        timeout --kill-after=10 --foreground 14400 \
+        timeout --kill-after=10 --foreground 7200 \
             dirb "$url" "$webdictfile" -a "$USERAGENT" -z $dirbdelay -w -r -f -S \
             >> "${dirboutraw}.${port}.${splitfile}" 2>&1 
-        echo "dirb for $url is $(( (webdictfilecount * 100 ) / webdictfilescount ))% done"
+        echo "dirb for $url is at $webdictfile and is $(( (webdictfilecount * 100 ) / webdictfilescount ))% done"
     done
 
     return 0
@@ -2663,7 +2663,7 @@ function webDiscover()
         /usr/share/seclists/Discovery/Web-Content/URLs/*.txt \
         "$RECONDIR"/tmp/mkrweb.txt 
     do
-        if [[ $wordlist =~ raft-.*words|LinuxFileList|default-web-root|extensions|parameter ]]
+        if [[ $wordlist =~ raft-|common-|big.txt|LinuxFileList|default-web-root|extensions|parameter ]]
         then 
             continue
         fi
@@ -2682,7 +2682,7 @@ function webDiscover()
     cat $(echo "${a_dirbfiles[*]}") 2>/dev/null \
         |egrep -v ' |\?|#|~' \
         |dos2unix -f \
-        |egrep -vi '\.(png|gif|jpg|ico)$' \
+        |egrep -vi '\.(png|gif|jpg|ico|css)$' \
         |sed -e 's|^/||' \
         |sort -u \
         |split -l 2000
@@ -2739,7 +2739,7 @@ function webDiscover()
     # second run through baseurls.  dirb may take hours
     # Run dirb as concurrent background jobs, but add a delay based on number of urls.
     echo $BORDER
-    echo "# webDiscover IS STARTING DIRB WITH A MAXIMUM TIME LIMIT OF $(((14400 * webdictfilescount) / 60 / 60)) HOURS"
+    echo "# webDiscover IS STARTING DIRB WITH A MAXIMUM TIME LIMIT OF $(((7200 * webdictfilescount) / 60 / 60)) HOURS"
     echo $BORDER
     dirbdelay=$(( $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null |wc -l) * 100 ))
 
@@ -2755,19 +2755,20 @@ function webDiscover()
     done
     echo "dirb is done"
 
+    # build dirburls file
+    cat "${dirboutraw}".x?? > "$dirboutraw" 2>&1
     ################################################################################
 
     ################################################################################
     # Round 2 of dirb to search first layer of subdirs
     echo $BORDER
-    echo "# webDiscover IS STARTING DIRB LEVEL 2, FIRST 100, WITH A MAXIMUM TIME LIMIT OF $(((14400 * webdictfilescount) / 60 / 60)) HOURS EACH THREAD"
+    echo "# webDiscover IS STARTING DIRB LEVEL 2, FIRST 100, WITH A MAXIMUM TIME LIMIT OF $(((7200 * webdictfilescount) / 60 / 60)) HOURS EACH THREAD"
     echo $BORDER
     dirbdelay=250
-    for url in $(grep CODE:200 "$dirboutraw" \
-        |egrep '://.*/.*/ ' \
-        |awk '{print $2}' \
-        |egrep -v '/%|///|/\./|/\.\.|//$|css|icons|manual|readme|help' \
-        |head -500)
+    for url in $(grep '==> DIRECTORY: ' "${dirboutraw}.x??" \
+        |awk '{print $3}' \
+        |sort -u \
+        |head -100 )
     do
         while [[ "$(jobs 2>&1|grep -c dirbScan)" -gt 5 ]]
         do
@@ -2785,12 +2786,12 @@ function webDiscover()
     done
     echo "dirb is done"
 
-    ################################################################################
-
-    ################################################################################
     # build dirburls file
-    cat "${dirboutraw}".* > "$dirboutraw" 2>&1
+    cat "${dirboutraw}".x?? >> "$dirboutraw" 2>&1
+    ################################################################################
 
+    ################################################################################
+    # create the .dirburls file
     for url in $(grep CODE:200 "$dirboutraw" \
         |grep -v SIZE:0 \
         |egrep -v '/%|///|/\./|/\.\.|//$' \
@@ -3006,7 +3007,7 @@ function niktoScan()
         echo "$url" >> "$RECONDIR"/${TARGET}.nikto
         # sometimes nikto will prompt for a submission of weird data.  Echo 'n' into pipe.
         echo 'n' |timeout --kill-after=10 --foreground 3600 \
-            nikto -no404 -nointeractive -C all -useragent "$USERAGENT" -host "$url" \
+            nikto -timeout 60 -no404 -nointeractive -C all -useragent "$USERAGENT" -host "$url" \
             >>"$RECONDIR"/${TARGET}.nikto 2>&1
     done
 
@@ -3053,7 +3054,7 @@ function skipfishScan()
         a_urls[${#a_urls[@]}]="$url"
     done
     screen -dmS ${TARGET}.skipfish.$RANDOM \
-        skipfish -k 48:00:00 -g1 -f100 -o "$RECONDIR"/${TARGET}.skipfish ${a_urls[*]}
+        skipfish -k 48:00:00 -l 2 -g1 -f100 -o "$RECONDIR"/${TARGET}.skipfish ${a_urls[*]}
 
     jobunlock ${FUNCNAME[0]}
     return 0

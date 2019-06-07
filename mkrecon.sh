@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20190606
+# version 20190607
 
 umask 077
 
@@ -2765,7 +2765,7 @@ function webDiscover()
     echo "# webDiscover IS STARTING DIRB LEVEL 2, FIRST 100, WITH A MAXIMUM TIME LIMIT OF $(((7200 * webdictfilescount) / 60 / 60)) HOURS EACH THREAD"
     echo $BORDER
     dirbdelay=250
-    for url in $(grep '==> DIRECTORY: ' "${dirboutraw}.x??" \
+    for url in $(grep '==> DIRECTORY: ' "${dirboutraw}.*.x??" \
         |awk '{print $3}' \
         |sort -u \
         |head -100 )
@@ -3378,24 +3378,31 @@ function wfuzzURLs()
         fi
 
         for fuzzdict in /usr/share/wfuzz/wordlist/vulns/sql_inj.txt \
-            /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt \
-            /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt \
+            /usr/share/seclists/Fuzzing/Databases/db2enumeration.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/Databases/MSSQL-Enumeration.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/Databases/MSSQL.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/Databases/MySQL.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/Databases/MySQL-Read-Local-Files.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/Databases/MySQL-SQLi-Login-Bypass.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/Databases/NoSQL.txt \
+            /usr/share/seclists/Fuzzing/Databases/Oracle.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/Databases/Postgres-Enumeration.fuzzdb.txt \
+            /usr/share/seclists/Fuzzing/LDAP.Fuzzinging.txt \
+            /usr/share/seclists/Fuzzing/LFI/LFI-Jhaddix.txt \
             /usr/share/seclists/Fuzzing/Polyglots/XSS-Polyglots-Dmiessler.txt \
             /usr/share/seclists/Fuzzing/Polyglots/XSS-Polyglots.txt \
             /usr/share/seclists/Fuzzing/Polyglots/XSS-Polyglot-Ultimate-0xsobky.txt \
-            /usr/share/seclists/Fuzzing/Generic-SQLi.txt \
-            /usr/share/seclists/Fuzzing/LDAP.Fuzzinging.txt \
-            /usr/share/seclists/Fuzzing/LFI-JHADDIX.txt \
-            /usr/share/seclists/Fuzzing/MSSQL.fuzzdb.txt \
-            /usr/share/seclists/Fuzzing/MYSQL.fuzzdb.txt \
-            /usr/share/seclists/Fuzzing/NoSQL.txt \
-            /usr/share/seclists/Fuzzing/Oracle.fuzzdb.txt \
-            /usr/share/seclists/Fuzzing/SSI-Injection-JHADDIX.txt \
+            /usr/share/seclists/Fuzzing/SQLi/Generic-SQLi.txt \
+            /usr/share/seclists/Fuzzing/SSI-Injection-Jhaddix.txt \
             /usr/share/seclists/Fuzzing/UnixAttacks.fuzzdb.txt \
-            /usr/share/seclists/Fuzzing/XSS-BruteLogic.txt \
-            /usr/share/seclists/Fuzzing/XSS-JHADDIX.txt \
-            /usr/share/seclists/Fuzzing/XSS-RSNAKE.txt \
-            /usr/share/seclists/Fuzzing/XXE-Fuzzing.txt
+            /usr/share/seclists/Fuzzing/XSS/XSS-BruteLogic.txt \
+            /usr/share/seclists/Fuzzing/XSS/XSS-Bypass-Strings-BruteLogic.txt \
+            /usr/share/seclists/Fuzzing/XSS/XSS-Jhaddix.txt \
+            /usr/share/seclists/Fuzzing/XSS/XSS-RSNAKE.txt \
+            /usr/share/seclists/Fuzzing/XSS/XSS-Somdev.txt \
+            /usr/share/seclists/Fuzzing/XXE-Fuzzing.txt \
+            /usr/share/wfuzz/wordlist/vulns/dirTraversal-nix.txt \
+            /usr/share/wfuzz/wordlist/vulns/dirTraversal-win.txt 
         do
             if [[ ! -f "$fuzzdict" ]]
             then

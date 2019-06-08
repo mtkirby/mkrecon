@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20190607
+# version 20190608
 
 umask 077
 
@@ -2756,7 +2756,7 @@ function webDiscover()
     echo "dirb is done"
 
     # build dirburls file
-    cat "${dirboutraw}".x?? > "$dirboutraw" 2>&1
+    cat "${dirboutraw}".*.x?? > "$dirboutraw" 2>&1
     ################################################################################
 
     ################################################################################
@@ -2765,7 +2765,7 @@ function webDiscover()
     echo "# webDiscover IS STARTING DIRB LEVEL 2, FIRST 100, WITH A MAXIMUM TIME LIMIT OF $(((7200 * webdictfilescount) / 60 / 60)) HOURS EACH THREAD"
     echo $BORDER
     dirbdelay=250
-    for url in $(grep '==> DIRECTORY: ' "${dirboutraw}.*.x??" \
+    for url in $(grep '==> DIRECTORY: ' "${dirboutraw}".*.x?? \
         |awk '{print $3}' \
         |sort -u \
         |head -100 )
@@ -2787,7 +2787,7 @@ function webDiscover()
     echo "dirb is done"
 
     # build dirburls file
-    cat "${dirboutraw}".x?? >> "$dirboutraw" 2>&1
+    cat "${dirboutraw}".*.x?? >> "$dirboutraw" 2>&1
     ################################################################################
 
     ################################################################################

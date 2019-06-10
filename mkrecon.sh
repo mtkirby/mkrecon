@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20190608
+# version 20190610
 
 umask 077
 
@@ -925,6 +925,7 @@ function joblock()
     local jobscount
     local joblist
     local job
+    local time=$(date)
 
     while true
     do
@@ -958,7 +959,7 @@ function joblock()
             then
                 touch "$JOBLOCKFILE"
                 echo $function >> "$JOBSFILE"
-                echo "joblock: allowing $function to run"
+                echo "joblock: allowing $function to run at $time"
                 rm -f "$JOBLOCKFILE" >/dev/null 2>&1
                 return 0
             else
@@ -1392,22 +1393,23 @@ function otherNmaps()
     ( timeout --kill-after=10 --foreground 172800 \
         nmap -sV --version-all -T2 -Pn -p $scanports --script=ajp-brute \
         -oN "$RECONDIR"/${TARGET}.nmap-ajp-brute $TARGET 2>&1 \
-        |grep -q '|' \
+        |grep -q '| ajp-brute' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ajp-brute 
     ) &
 
     ( timeout --kill-after=10 --foreground 172800 \
         nmap -sV --version-all -T2 -Pn -p $scanports --script=xmpp-brute \
         -oN "$RECONDIR"/${TARGET}.nmap-xmpp-brute $TARGET 2>&1 \
-        |grep -q '|' \
+        |grep -q '| xmpp-brute' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-xmpp-brute 
     ) &
 
     ( timeout --kill-after=10 --foreground 172800 \
         nmap -sV --version-all -T2 -Pn -p $scanports --script=oracle-sid-brute \
         -oN "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute $TARGET >/dev/null 2>&1 
-
-        if grep -q '|' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute
+        # | oracle-sid-brute: 
+        # |_  XE
+        if grep -q '| oracle-sid-brute:' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute
         then
             for sid in $(awk '/^\|/ {print $2}' "$RECONDIR"/${TARGET}.nmap-oracle-sid-brute |grep -v oracle-sid-brute)
             do
@@ -1431,7 +1433,7 @@ function otherNmaps()
     ( timeout --kill-after=10 --foreground 172800 \
         nmap -sV --version-all -T3 -Pn -sU -p 623 --script ipmi-brute \
         -oN "$RECONDIR"/${TARGET}.nmap-ipmi-brute $TARGET 2>&1 \
-        |grep -q '|' \
+        |grep -q '| ipmi-brute' \
         || rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute \
         ; grep -q 'open|filtered' "$RECONDIR"/${TARGET}.nmap-ipmi-brute 2>/dev/null \
         && rm -f "$RECONDIR"/${TARGET}.nmap-ipmi-brute 
@@ -4928,6 +4930,7 @@ function printexitstats()
     local runhour
     local runmin
     local runsec
+    local time=$(date)
 
     endepoch=$(date +%s)
     runtime=$(( endepoch - startepoch ))
@@ -4937,7 +4940,7 @@ function printexitstats()
     runsec=0$(( ( runtime - ( runhour * 3600 )) % 60 ))
     runsec=${runsec:$((${#runsec}-2)):${#runsec}}
 
-    echo "completed $function runtime=${runhour}:${runmin}:${runsec}"
+    echo "completed $function runtime=${runhour}:${runmin}:${runsec} time=\"$time\""
 }
 ################################################################################
 

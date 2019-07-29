@@ -1,6 +1,7 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20190610
+# version 20190722
+
 
 umask 077
 
@@ -1005,7 +1006,7 @@ function buildEnv()
     local testdir
     local hydrasize
     local mkhydrasize
-    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git go-dep golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-asn1crypto python-openssl python-pyasn1 python-pyasn1-modules python-qt4reactor python-rdpy python-rsa python-twisted python-twisted-bin python-twisted-web python3-asn1crypto python3-openssl python3-pyasn1 python3-pyasn1-modules python3-rsa python3-twisted python3-twisted-bin python-pip python-rdpy python-selenium python3-selenium routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
+    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git go-dep golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java libmariadb-dev mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-asn1crypto python-openssl python-pyasn1 python-pyasn1-modules python-qt4reactor python-rdpy python-rsa python-twisted python-twisted-bin python-twisted-web python3-asn1crypto python3-openssl python3-pyasn1 python3-pyasn1-modules python3-rsa python3-twisted python3-twisted-bin python-pip python-rdpy python-selenium python3-selenium routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     if ! dpkg -s mysql-connector-java >/dev/null 2>&1
     then
@@ -2764,17 +2765,18 @@ function webDiscover()
     ################################################################################
     # Round 2 of dirb to search first layer of subdirs
     echo $BORDER
-    echo "# webDiscover IS STARTING DIRB LEVEL 2, FIRST 100, WITH A MAXIMUM TIME LIMIT OF $(((7200 * webdictfilescount) / 60 / 60)) HOURS EACH THREAD"
+    echo "# webDiscover IS STARTING DIRB LEVEL 2, FIRST 200, WITH A MAXIMUM TIME LIMIT OF $(((7200 * webdictfilescount) / 60 / 60)) HOURS EACH THREAD"
     echo $BORDER
-    dirbdelay=250
+    dirbdelay=50
     for url in $(grep '==> DIRECTORY: ' "${dirboutraw}".*.x?? \
         |awk '{print $3}' \
         |sort -u \
-        |head -100 )
+        |sort -R \
+        |head -200 )
     do
-        while [[ "$(jobs 2>&1|grep -c dirbScan)" -gt 5 ]]
+        while [[ "$(jobs 2>&1|grep -c dirbScan)" -gt 15 ]]
         do
-            sleep 60
+            sleep 5
         done
 
         port=$(getPortFromUrl $url)
@@ -4085,6 +4087,10 @@ function jmxspider()
         rm -f "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript >/dev/null 2>&1
         rm -f "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs >/dev/null 2>&1
         rm -f "$RECONDIR"/tmp/${TARGET}.${port}.jmxattribs >/dev/null 2>&1
+
+        echo 'about' |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} 2>&1 \
+            |egrep -v '^\$|^#|^Welcome to JMX terminal' \
+            > "$RECONDIR"/${TARGET}.${port}.jmxabout
     
         for bean in $(echo 'beans -d *' \
             |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} 2>&1 \

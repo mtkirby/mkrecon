@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20200227
+# version 20200309
 
 umask 077
 
@@ -4066,10 +4066,14 @@ function jmxspider()
     local attrib
     local line
     local IFS=$'\n'
+    local jmxtermjar='jmxterm-1.0.1-uber.jar'
 
-    if [[ ! -f "/tmp/jmxterm-1.0.0-uber.jar" ]]
+    # a corrupt .jmxterm_history file can cause this to fail
+    rm -f ~/.jmxterm_history >/dev/null 2>&1
+
+    if [[ ! -f "/tmp/$jmxtermjar" ]]
     then
-        if ! wget -O /tmp/jmxterm-1.0.0-uber.jar https://github.com/jiaqi/jmxterm/releases/download/v1.0.0/jmxterm-1.0.0-uber.jar >/dev/null 2>&1
+        if ! wget -O /tmp/$jmxtermjar https://github.com/jiaqi/jmxterm/releases/download/v1.0.1/$jmxtermjar >/dev/null 2>&1
         then
             echo "FAILURE in ${FUNCNAME[0]}: Could not retrieve jmxterm"
             return 1
@@ -4078,7 +4082,7 @@ function jmxspider()
 
     for port in ${RMIPORTS[@]}
     do
-        if ! echo 'domains' |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} >/dev/null 2>&1
+        if ! echo 'domains' |java -jar /tmp/$jmxtermjar -l ${TARGET}:${port} >/dev/null 2>&1
         then
             continue
         fi
@@ -4087,18 +4091,18 @@ function jmxspider()
         rm -f "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs >/dev/null 2>&1
         rm -f "$RECONDIR"/tmp/${TARGET}.${port}.jmxattribs >/dev/null 2>&1
 
-        echo 'about' |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} 2>&1 \
+        echo 'about' |java -jar /tmp/$jmxtermjar -l ${TARGET}:${port} 2>&1 \
             |egrep -v '^\$|^#|^Welcome to JMX terminal' \
             > "$RECONDIR"/${TARGET}.${port}.jmxabout
     
         for bean in $(echo 'beans -d *' \
-            |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} 2>&1 \
+            |java -jar /tmp/$jmxtermjar -l ${TARGET}:${port} 2>&1 \
             |egrep -v '^\$|^#|^Welcome to JMX terminal' )
         do
             echo "info -b $bean -t a" >> "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs
         done
     
-        java -jar jmxterm-1.0.0-uber.jar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs -l ${TARGET}:${port} 2>&1 \
+        java -jar /tmp/$jmxtermjar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs -l ${TARGET}:${port} 2>&1 \
             |egrep -v '^\$|^Welcome to JMX terminal' \
             > "$RECONDIR"/tmp/${TARGET}.${port}.jmxattribs
     
@@ -4115,7 +4119,7 @@ function jmxspider()
             fi
         done
     
-        java -jar jmxterm-1.0.0-uber.jar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript -l ${TARGET}:${port} \
+        java -jar /tmp/$jmxtermjar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript -l ${TARGET}:${port} \
             > "$RECONDIR"/${TARGET}.${port}.jmxspider 2>&1
     done
 

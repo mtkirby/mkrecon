@@ -1,6 +1,26 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20200309
+# version 20201012
+
+# commix --ignore-redirects --disable-coloring --batch --all --crawl=0 -u https:// / 2>&1 
+# --user-agent=AGENT
+
+# https://www.imperva.com/lg/lgw_trial.asp?pid=213
+
+# https://github.com/RhinoSecurityLabs/pacu
+
+# https://hackernoon.com/leaklooker-find-open-databases-in-a-second-9da4249c8472
+
+# https://github.com/Coalfire-Research/DeathMetal
+
+
+
+
+# https://github.com/vulnersCom/nmap-vulners
+
+#https://github.com/gquere/pwn_jenkins
+
+
 
 umask 077
 
@@ -661,9 +681,9 @@ function MAIN()
 
     if [[ -f "$RECONDIR"/${TARGET}.baseurls ]]
     then
-        echo "starting clusterdScan"
-        echo "... outputs $RECONDIR/${TARGET}.clusterd"
-        clusterdScan &
+        #echo "starting clusterdScan"
+        #echo "... outputs $RECONDIR/${TARGET}.clusterd"
+        #clusterdScan &
 
         echo "starting WAScan"
         echo "... outputs $RECONDIR/${TARGET}.\$port.WAScan"
@@ -1005,7 +1025,7 @@ function buildEnv()
     local testdir
     local hydrasize
     local mkhydrasize
-    local pkgs="alien arachni bind9-host blindelephant brutespray cewl clusterd curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git go-dep golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libcurl4-openssl-dev libgmp-dev libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java libmariadb-dev mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-asn1crypto python-openssl python-pyasn1 python-pyasn1-modules python-rsa python-twisted python-twisted-bin python-twisted-web python3-asn1crypto python3-openssl python3-pyasn1 python3-pyasn1-modules python3-rsa python3-twisted python3-twisted-bin python-pip python-selenium python3-selenium routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
+    local pkgs="alien arachni bind9-host blindelephant brutespray cewl curl dirb dnsenum dnsrecon dos2unix exif exploitdb eyewitness git go-dep golang-go golang-golang-x-crypto-dev hsqldb-utils hydra ike-scan iproute2 john joomscan jq kafkacat ldap-utils libnet-whois-ip-perl libxml2-utils libwww-mechanize-perl libpostgresql-jdbc-java libjt400-java libjtds-java libderby-java libghc-hdbc-dev libhsqldb-java libmariadb-dev mariadb-common metasploit-framework mongo-tools mongodb-clients ncat ncrack nikto nmap nmap-common nsis open-iscsi openvas-cli postgresql-client-common python-asn1crypto python-openssl python-pyasn1 python-pyasn1-modules python-rsa python-twisted python-twisted-web python3-asn1crypto python3-openssl python3-pyasn1 python3-pyasn1-modules python3-rsa python3-twisted python3-pip python-selenium python3-selenium routersploit rpcbind rpm rsh-client ruby screen seclists skipfish sqlline snmpcheck time tnscmd10g unzip wafw00f wapiti wfuzz wget whatweb wig wordlists wpscan xmlstarlet zaproxy"
 
     if ! dpkg -s mysql-connector-java >/dev/null 2>&1
     then
@@ -2743,7 +2763,7 @@ function webDiscover()
     echo $BORDER
     echo "# webDiscover IS STARTING DIRB WITH A MAXIMUM TIME LIMIT OF $(((7200 * webdictfilescount) / 60 / 60)) HOURS"
     echo $BORDER
-    dirbdelay=$(( $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null |wc -l) * 100 ))
+    dirbdelay=$(( $(cat "$RECONDIR"/${TARGET}.baseurls 2>/dev/null |wc -l) * 20 ))
 
     for url in $(cat "$RECONDIR"/${TARGET}.baseurls)
     do
@@ -4066,14 +4086,10 @@ function jmxspider()
     local attrib
     local line
     local IFS=$'\n'
-    local jmxtermjar='jmxterm-1.0.1-uber.jar'
 
-    # a corrupt .jmxterm_history file can cause this to fail
-    rm -f ~/.jmxterm_history >/dev/null 2>&1
-
-    if [[ ! -f "/tmp/$jmxtermjar" ]]
+    if [[ ! -f "/tmp/jmxterm-1.0.0-uber.jar" ]]
     then
-        if ! wget -O /tmp/$jmxtermjar https://github.com/jiaqi/jmxterm/releases/download/v1.0.1/$jmxtermjar >/dev/null 2>&1
+        if ! wget -O /tmp/jmxterm-1.0.0-uber.jar https://github.com/jiaqi/jmxterm/releases/download/v1.0.0/jmxterm-1.0.0-uber.jar >/dev/null 2>&1
         then
             echo "FAILURE in ${FUNCNAME[0]}: Could not retrieve jmxterm"
             return 1
@@ -4082,7 +4098,7 @@ function jmxspider()
 
     for port in ${RMIPORTS[@]}
     do
-        if ! echo 'domains' |java -jar /tmp/$jmxtermjar -l ${TARGET}:${port} >/dev/null 2>&1
+        if ! echo 'domains' |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} >/dev/null 2>&1
         then
             continue
         fi
@@ -4091,18 +4107,18 @@ function jmxspider()
         rm -f "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs >/dev/null 2>&1
         rm -f "$RECONDIR"/tmp/${TARGET}.${port}.jmxattribs >/dev/null 2>&1
 
-        echo 'about' |java -jar /tmp/$jmxtermjar -l ${TARGET}:${port} 2>&1 \
+        echo 'about' |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} 2>&1 \
             |egrep -v '^\$|^#|^Welcome to JMX terminal' \
             > "$RECONDIR"/${TARGET}.${port}.jmxabout
     
         for bean in $(echo 'beans -d *' \
-            |java -jar /tmp/$jmxtermjar -l ${TARGET}:${port} 2>&1 \
+            |java -jar /tmp/jmxterm-1.0.0-uber.jar -l ${TARGET}:${port} 2>&1 \
             |egrep -v '^\$|^#|^Welcome to JMX terminal' )
         do
             echo "info -b $bean -t a" >> "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs
         done
     
-        java -jar /tmp/$jmxtermjar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs -l ${TARGET}:${port} 2>&1 \
+        java -jar jmxterm-1.0.0-uber.jar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxgetattribs -l ${TARGET}:${port} 2>&1 \
             |egrep -v '^\$|^Welcome to JMX terminal' \
             > "$RECONDIR"/tmp/${TARGET}.${port}.jmxattribs
     
@@ -4119,7 +4135,7 @@ function jmxspider()
             fi
         done
     
-        java -jar /tmp/$jmxtermjar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript -l ${TARGET}:${port} \
+        java -jar jmxterm-1.0.0-uber.jar -i "$RECONDIR"/tmp/${TARGET}.${port}.jmxscript -l ${TARGET}:${port} \
             > "$RECONDIR"/${TARGET}.${port}.jmxspider 2>&1
     done
 
@@ -4187,7 +4203,7 @@ function msfHttpScan()
 
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/http/; exit' \
-        |awk '{print $1}' \
+        |awk '{print $2}' \
         |grep 'auxiliary/scanner/http/' \
         |egrep -v 'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass|http/xpath|http/hp_|/crawler' \
         )
@@ -4252,7 +4268,7 @@ function msfHPScan()
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/http/; exit' \
         |grep 'http/hp_' \
-        |awk '{print $1}')
+        |awk '{print $2}')
     do
         hpscans[${#hpscans[@]}]=$msfscan
     done
@@ -4319,7 +4335,7 @@ function msfSapScan()
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/sap/; exit' \
         |grep 'auxiliary/scanner/sap/' \
-        |awk '{print $1}')
+        |awk '{print $2}')
     do
         sapscans[${#sapscans[@]}]=$msfscan
     done
@@ -4694,7 +4710,8 @@ function arachniScan()
         timeout --kill-after 10 --foreground 172800 \
             arachni --http-user-agent "$USERAGENT" --audit-links --audit-forms --audit-ui-forms \
             --audit-ui-inputs --audit-xmls --audit-jsons --timeout=47:30:0 --output-only-positives \
-            --http-request-concurrency=1 --report-save-path="$RECONDIR"/tmp/arachni $url \
+            --http-request-concurrency=1 --http-response-max-size=9999999 \
+            --report-save-path="$RECONDIR"/tmp/arachni $url \
             >"$RECONDIR"/tmp/arachni.$count.out 2>&1 &
         sleep 600
     done

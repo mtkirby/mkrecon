@@ -197,6 +197,14 @@ function mkprobe()
         echo "If 12c, sys hash is first field" >>/tmp/orapworcl
         xxd -c80 -g0 -s +0x04CA -l 80 "$i" >>/tmp/orapworcl 2>&1
     done
+
+    if which yum >/dev/null 2>&1
+    then
+        echo "##################################################" 
+        echo "# Show CVEs
+        yum updateinfo list cves
+    fi
+
 }
 
 function dumpRpmCVEs()

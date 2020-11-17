@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20201012
+# version 20201117
 
 # commix --ignore-redirects --disable-coloring --batch --all --crawl=0 -u https:// / 2>&1 
 # --user-agent=AGENT
@@ -3736,7 +3736,7 @@ function scanURLs()
         echo "URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
         timeout --kill-after=10 --foreground 1800 \
             wpscan --user-agent="$USERAGENT" -t3  --ignore-main-redirect --no-banner \
-            --disable-tls-checks -e --no-banner -f cli-no-color --url "$url" \
+            --disable-tls-checks -e --no-update -f cli-no-color --url "$url" \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.wpscan 2>&1 
 
@@ -3745,8 +3745,8 @@ function scanURLs()
         echo "CRACKING ADMIN FOR URL: $url" >> "$RECONDIR"/${TARGET}.wpscan
         timeout --kill-after=10 --foreground 1800 \
             wpscan --user-agent="$USERAGENT" -t3  --ignore-main-redirect \
-            --no-banner --disable-tls-checks --no-banner -f cli-no-color \
-            --wordlist "$RECONDIR"/tmp/passwds.lst --username admin --url "$url" \
+            --no-banner --disable-tls-checks --no-update -f cli-no-color \
+            --passwords "$RECONDIR"/tmp/passwds.lst --usernames admin --url "$url" \
             |strings -a \
             >> "$RECONDIR"/${TARGET}.wpscan 2>&1
     done

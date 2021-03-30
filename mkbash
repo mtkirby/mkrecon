@@ -41,21 +41,33 @@ alias dusk='du -sk * |sort -k1 -n'
 which vim >/dev/null 2>&1 && alias vi=vim
 
 
-function mkprobe()
+function _mkprobe()
 {
+    mkdir /tmp/mkprobe >/dev/null 2>&1
+    chmod 700 /tmp/mkprobe
+    echo "OUTPUTING TO /tmp/mkprobe/mkprobe.output"
+
     echo "##################################################" 
     echo "# FINDING SETUID/SETGID"
     #find / -xdev -type f -perm /u=s,g=s -exec ls -ld {} \; 2>/dev/null
-    find / -xdev -type f \( -perm  -4000 -o -perm -2000 \) -exec ls -ld {} \;
+    #find / -type f \( -perm  -4000 -o -perm -2000 \) -exec ls -ld {} \;
+    for dir in $(df -l |awk '{ if ($6 ~ /\// ) print $6}')
+    do
+        find $dir -xdev -type f \( -perm  -4000 -o -perm -2000 \) -exec ls -ld {} \;
+    done
 
 
     echo "##################################################" 
     echo "# FINDING WORLD WRITABLE"
-    find / -xdev \( -type f -o -type d \) -perm -0002 -exec ls -ld {} \; 2>/dev/null
+    #find / \( -type f -o -type d \) -perm -0002 -exec ls -ld {} \; 2>/dev/null
+    for dir in $(df -l |awk '{ if ($6 ~ /\// ) print $6}')
+    do
+        find $dir -xdev \( -type f -o -type d \) -perm -0002 -exec ls -ld {} \; 2>/dev/null
+    done
 
     echo "##################################################" 
     echo "# YPWHICH"
-    if ypwhich
+    if which ypwhich >/dev/null 2>&1 && ypwhich
     then
         echo "##################################################" 
         echo "# YPCAT PASSWD"
@@ -105,17 +117,17 @@ function mkprobe()
     netstat -peanut 2>/dev/null |grep LISTEN || netstat -an |grep LISTEN
 
     echo "##################################################" 
-    echo "# egrep --color=never -v '^#|^$' /etc/cron.d/* /etc/crontab /var/spool/cron/* /var/spool/cron/*/* 2>/dev/null"
+    echo "# CRONJOBS"
     egrep --color=never -v '^#|^$' /etc/cron.d/* /etc/crontab /var/spool/cron/* /var/spool/cron/*/* 2>/dev/null
 
     echo "##################################################" 
-    echo "# DF -A"
+    echo "# DF -AH"
     # look for nfs/smb
-    df -a
+    df -ah
 
     echo "##################################################" 
     echo "# DOCKER PS"
-    if docker ps
+    if which docker >/dev/null 2>&1
     then
         echo "##################################################" 
         echo "# GETENT GROUP DOCKER"
@@ -134,20 +146,16 @@ function mkprobe()
 
     echo "##################################################" 
     echo "# FIND HTPASSWD FILES"
-    find / -xdev -name .htpasswd 2>/dev/null
+    find / /usr /usr/local /var /opt -xdev -name .htpasswd 2>/dev/null
 
     echo "##################################################" 
     echo "# APACHE AUTHUSERFILE LOCATIONS"
-    find /etc -type f -exec grep -i AuthUserFile {} \; 2>/dev/null
+    find /etc /opt/*apache* /usr/local/*apache* -type f -exec grep -i AuthUserFile {} \; 2>/dev/null
 
     echo "##################################################" 
     echo "# COMMUNITY IN SNMP.CONF"
     find /etc -type f -iname '*snmp*' -exec grep -i community {} \; 2>/dev/null
     
-    echo "##################################################" 
-    echo "# CRON IN /ETC"
-    find /etc/*cron* -type f -exec ls -ld {} \; 2>/dev/null
-
     echo "##################################################" 
     echo "# MYSQL USER DB FILES"
     find /var/lib/mysql -type f -iname '*user*' -exec ls -ld {} \; 2>/dev/null
@@ -167,45 +175,60 @@ function mkprobe()
 
     echo "##################################################" 
     echo "# FIND PASSW FILES"
-    echo "# OUTPUT TO /tmp/passwfiles"
-    find /etc /var /opt /usr -type f -iname '*passw*' 2>/dev/null |egrep -v '/usr/share/|/usr/include|/usr/sbin|/usr/bin|.pyc$|.html$|.so$' >>/tmp/passwfiles 2>&1
+    echo "# OUTPUT TO /tmp/mkprobe/passwfiles"
+    find /etc /var /opt /usr -type f -iname '*passw*' -exec ls -ld {} \;  2>/dev/null |egrep -v '/usr/share/|/usr/include|/usr/sbin|/usr/bin|.pyc$|.html$|.so$' >>/tmp/mkprobe/passwfiles 2>&1
 
     echo "##################################################" 
     echo "# PASSW IN /ETC FILES"
-    echo "# OUTPUT TO /tmp/etcpassw"
-    find /etc -type f -exec grep -i passw {} \; >>/tmp/etcpassw 2>/dev/null 
+    echo "# OUTPUT TO /tmp/mkprobe/etcpassw"
+    find /etc -type f -exec grep -i passw {} \; >>/tmp/mkprobe/etcpassw 2>/dev/null 
 
     echo "##################################################" 
     echo "# FIND ORAPWORCL FILES AND DUMP HASHES"
-    echo "# OUTPUT TO /tmp/orapworcl"
+    echo "# OUTPUT TO /tmp/mkprobe/orapworcl"
     # https://laurent-leturgez.com/2017/12/15/brute-forcing-the-oracle-password-file/
     # https://github.com/lolo115/oracrack
     for i in $(find /etc /opt/ora* /home -type f -name orapworcl)
     do
-        echo "If 10g, sys hash is second field" >>/tmp/orapworcl
-        xxd -c16 -g0 -s +0x0484 -l 16 "$i" >>/tmp/orapworcl 2>&1
+        echo "If 10g, sys hash is second field" >>/tmp/mkprobe/orapworcl
+        xxd -c16 -g0 -s +0x0484 -l 16 "$i" >>/tmp/mkprobe/orapworcl 2>&1
 
-        echo "If 11g, sys hash is first field" >>/tmp/orapworcl
-        xxd -c30 -g0 -s +0x04ac -l 30 "$i" >>/tmp/orapworcl 2>&1
+        echo "If 11g, sys hash is first field" >>/tmp/mkprobe/orapworcl
+        xxd -c30 -g0 -s +0x04ac -l 30 "$i" >>/tmp/mkprobe/orapworcl 2>&1
 
-        echo "First part, 20 first bytes, SHA1 digest" >>/tmp/orapworcl
-        xxd -c20 -g0 -s +0x04ac -l 20 "$i" >>/tmp/orapworcl 2>&1
+        echo "First part, 20 first bytes, SHA1 digest" >>/tmp/mkprobe/orapworcl
+        xxd -c20 -g0 -s +0x04ac -l 20 "$i" >>/tmp/mkprobe/orapworcl 2>&1
 
-        echo "Second part, 10 next bytes, Salt" >>/tmp/orapworcl
-        xxd -c10 -g0 -s +0x4C0  -l 10 "$i" >>/tmp/orapworcl 2>&1
+        echo "Second part, 10 next bytes, Salt" >>/tmp/mkprobe/orapworcl
+        xxd -c10 -g0 -s +0x4C0  -l 10 "$i" >>/tmp/mkprobe/orapworcl 2>&1
 
-        echo "If 12c, sys hash is first field" >>/tmp/orapworcl
-        xxd -c80 -g0 -s +0x04CA -l 80 "$i" >>/tmp/orapworcl 2>&1
+        echo "If 12c, sys hash is first field" >>/tmp/mkprobe/orapworcl
+        xxd -c80 -g0 -s +0x04CA -l 80 "$i" >>/tmp/mkprobe/orapworcl 2>&1
     done
+
+    echo "##################################################" 
+    echo "# OUTPUT /proc/*/environ"
+    echo "# OUTPUT TO /tmp/mkprobe/environ"
+    cat /proc/*/environ |tr '\0' '\n'|sort -u >>/tmp/mkprobe/environ
 
     if which yum >/dev/null 2>&1
     then
         echo "##################################################" 
-        echo "# Show CVEs
+        echo "# Show CVEs"
         yum updateinfo list cves
-    fi
+    fi  
 
+    echo "##################################################" 
+    echo "GOTO /tmp/mkprobe"
 }
+
+function mkprobe()
+{
+    mkdir /tmp/mkprobe >/dev/null 2>&1
+    chmod 700 /tmp/mkprobe
+    _mkprobe |tee /tmp/mkprobe/mkprobe.output
+}
+
 
 function dumpRpmCVEs()
 {

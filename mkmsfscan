@@ -108,8 +108,20 @@ function echocmd()
     echo "sleep 3" >> "$cmdfile"
 }
 
+
+for exploit in $(/usr/share/metasploit-framework/msfconsole \
+    -q -n -x 'search exploit/; exit -y' \
+    |grep -v trans2open \
+    |awk '{print $2}' \
+    |egrep -i "exploit/" \
+    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g")
+do
+    EXPLOITS[${#EXPLOITS[@]}]=$exploit
+done
+
+
 shopt -s nocasematch
-for host in $(cat "$1" |sort -u |egrep --color=never -v '^$|#')
+for host in $(cat "$1" |sort -u |egrep -v '^$|#')
 do
     ngrepfile="${1}-${host}.ngrep"
     nmapfile="${1}-${host}.nmap"
@@ -120,7 +132,7 @@ do
         nmap -T4 --open -sV --version-all -p T:1-65535 -sT -oG "$ngrepfile" -oN "$nmapfile" -oX "$xmlfile" "$host" >/dev/null 2>&1
     fi
     IFS=$'\n'
-    for line in $(egrep --color=never '\sPorts:\s' "$ngrepfile" |sed -e 's/.*Ports: //')
+    for line in $(egrep '\sPorts:\s' "$ngrepfile" |sed -e 's/.*Ports: //')
     do   
         IFS=','
         for fields in $line
@@ -152,55 +164,37 @@ do
                 SSL='false'
             fi
 
-            if [[ $version =~ 'Weblogic' ]]
-            then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/; exit -y' \
-                    |egrep --color=never -i 'exploit/.*weblogic.*' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-            fi
+            for scanthis in \
+                Apache \
+                Consul \
+                docker \
+                git \
+                JBoss \
+                jdwp \
+                Jenkins \
+                Jira \
+                MySQL \
+                redis \
+                Samba \
+                Solr \
+                smtp \
+                Tomcat \
+                Weblogic
+            do
+                if [[ $version =~ "$scanthis" ]] \
+                || [[ $service =~ "$scanthis" ]]
+                then
+                    echo "Found $scanthis on $host:$port"
+                    for exploit in ${EXPLOITS[@]}
+                    do
+                        if [[ $exploit =~ "$scanthis" ]]
+                        then 
+                            echocmd
+                        fi
+                    done
+                fi
+            done
 
-            if [[ $version =~ 'JBoss' ]]
-            then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/; exit -y' \
-                    |egrep --color=never -i 'exploit/.*jboss.*' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-            fi
-
-            if [[ $version =~ 'Jenkins' ]]
-            then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/; exit -y' \
-                    |egrep --color=never -i 'exploit/.*jenkins.*' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-            fi
-
-            if [[ $version =~ 'Tomcat' ]]
-            then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/; exit -y' \
-                    |egrep --color=never -i 'exploit/.*tomcat.*' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-            fi
-
-	
             if [[ $version =~ 'Java' ]] \
             || [[ $version =~ 'RMI' ]] \
             || [[ $version =~ 'JMX' ]]
@@ -213,102 +207,6 @@ do
                 done
             fi
 
-            if [[ $service =~ 'jdwp' ]] 
-            then
-    	        for exploit in \
-                    exploit/multi/misc/java_jdwp_debugger
-		        do
-                    echocmd
-                done
-            fi
-
-            if [[ $service =~ 'ms-wbt-server' ]] 
-            then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/windows/winrm/; exit -y' \
-                    |grep --color=never 'exploit/windows/winrm/' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-            fi
-
-            if [[ $service == 'redis' ]] 
-            then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/; exit -y' \
-                    |egrep --color=never -i 'exploit/.*redis.*' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-            fi
-
-            if [[ $service == 'smtp' ]] 
-            then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/; exit -y' \
-                    |egrep --color=never -i 'exploit/.*smtp.*' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-            fi
-
-            if [[ $version =~ 'Consul' ]]
-            then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/; exit -y' \
-                    |egrep --color=never -i 'exploit/.*consul.*' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-            fi
-
-            if [[ $version =~ 'Samba' ]]
-            then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/; exit -y' \
-                    |grep -v trans2open \
-                    |egrep --color=never -i 'exploit/.*samba.*' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-            fi
-
-            if [[ $version =~ 'MySQL' ]]
-            then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/; exit -y' \
-                    |egrep --color=never -i 'exploit/.*mysql.*' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-            fi
-
-            if [[ $version =~ 'Docker' ]] \
-            || [[ $service =~ 'docker' ]]
-            then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/; exit -y' \
-                    |egrep --color=never -i 'exploit/.*docker.*' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-            fi
-
 
             # COMMENT OUT TO RUN THESE
             continue
@@ -317,43 +215,22 @@ do
             if [[ $service == 'http' ]] \
             || [[ $service == 'ssl|https' ]]
             then
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/multi/http/; exit -y' \
-                    |grep --color=never 'exploit/multi/http/' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
+                echo "Found $service on $host:$port"
+                for exploit in ${EXPLOITS[@]}
                 do
-                    echocmd
-                done
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/linux/http/; exit -y' \
-                    |grep --color=never 'exploit/linux/http/' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/unix/http/; exit -y' \
-                    |grep --color=never 'exploit/unix/http/' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
-                done
-                for exploit in $(/usr/share/metasploit-framework/msfconsole -q -n \
-                    -x 'search exploit/unix/webapp/; exit -y' \
-                    |grep --color=never 'exploit/unix/webapp/' \
-                    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
-                    |awk '{print $2}')
-                do
-                    echocmd
+                    if [[ $exploit =~ "exploit/multi/http" ]] \
+                    || [[ $exploit =~ "exploit/linux/http" ]] \
+                    || [[ $exploit =~ "exploit/unix/http" ]] \
+                    || [[ $exploit =~ "exploit/unix/webapp" ]] 
+                    then 
+                        echocmd
+                    fi
                 done
             fi
         done
     done
 done
-echo "exit" >> "$cmdfile"
+#echo "exit" >> "$cmdfile"
 for i in {1..60}
 do
     echo "jobs" >> "$cmdfile"

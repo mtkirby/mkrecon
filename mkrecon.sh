@@ -1,6 +1,6 @@
 #!/bin/bash
 # https://github.com/mtkirby/mkrecon
-# version 20201117
+# version 20210508
 
 # commix --ignore-redirects --disable-coloring --batch --all --crawl=0 -u https:// / 2>&1 
 # --user-agent=AGENT
@@ -4206,6 +4206,7 @@ function msfHttpScan()
         |awk '{print $2}' \
         |grep 'auxiliary/scanner/http/' \
         |egrep -v 'brute|udp_amplification|_amp$|dir_webdav_unicode_bypass|http/xpath|http/hp_|/crawler' \
+        |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
         )
     do
         httpscans[${#httpscans[@]}]=$msfscan
@@ -4268,6 +4269,7 @@ function msfHPScan()
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/http/; exit' \
         |grep 'http/hp_' \
+        |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
         |awk '{print $2}')
     do
         hpscans[${#hpscans[@]}]=$msfscan
@@ -4335,6 +4337,7 @@ function msfSapScan()
     for msfscan in $(/usr/share/metasploit-framework/msfconsole -q -n \
         -x 'search auxiliary/scanner/sap/; exit' \
         |grep 'auxiliary/scanner/sap/' \
+        |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
         |awk '{print $2}')
     do
         sapscans[${#sapscans[@]}]=$msfscan

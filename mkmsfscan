@@ -70,7 +70,7 @@ function echocmd()
         then
             lport=20000
         fi
-        while netstat -ant|grep --color=never LISTEN |grep --color=never ":$lport " >/dev/null 2>&1
+        while netstat -ant|grep LISTEN |grep ":$lport " >/dev/null 2>&1
         do
             let lport++
         done
@@ -80,7 +80,7 @@ function echocmd()
         then
             srvport=2000
         fi
-        while netstat -ant|grep --color=never LISTEN |grep --color=never ":$srvport " >/dev/null 2>&1
+        while netstat -ant|grep LISTEN |grep ":$srvport " >/dev/null 2>&1
         do
             let srvport++
         done
@@ -310,7 +310,7 @@ do
             fi
 
 
-            # UNCOMMENT TO RUN THESE
+            # COMMENT OUT TO RUN THESE
             continue
 
 

